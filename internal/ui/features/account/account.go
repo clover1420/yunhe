@@ -38,9 +38,11 @@ type Deps struct {
 
 	AccountOpen *bool
 	Profile     func() *qqmusic.Profile
+	Restore     RestoreState
 
-	Post     func(func())
-	SignedIn func(*qqmusic.Profile)
+	Post         func(func())
+	SignedIn     func(*qqmusic.Profile)
+	RetryRestore func()
 
 	BeginQR       func() (string, error)
 	BeginWechatQR func() (string, error)
@@ -53,6 +55,12 @@ type Deps struct {
 	OpenLogin  func()
 	OpenUser   func(id int64)
 	SignOut    func()
+}
+
+// RestoreState is how restoring the saved login is going.
+type RestoreState struct {
+	Loading bool
+	Failed  bool
 }
 
 // Start begins a login with a new QR code, from QQ or WeChat.
@@ -261,11 +269,17 @@ func Row(c *ui.Context, d Deps) {
 		b.Background(d.Sidebar(c, p.Hover, 0.035))
 	}
 	if d.Profile() == nil {
+		status := "未登录"
+		if d.Restore.Loading {
+			status = "正在恢复登录"
+		} else if d.Restore.Failed {
+			status = "登录恢复失败"
+		}
 		b.Label("账户").Expanded(*open).Children(func() {
 			ui.Box(c).Size(26, 26).Radius(13).Background(p.Press).Center().Children(func() {
 				ui.Icon(c, appui.IconUser).Size(14, 14).TextColor(p.Muted)
 			})
-			ui.Text(c, "未登录").FontSize(13).FontWeight(500).TextColor(p.Muted).Grow(1)
+			ui.Text(c, status).FontSize(13).FontWeight(500).TextColor(p.Muted).Grow(1)
 			ui.Icon(c, appui.IconUpDown).Size(13, 13).TextColor(p.Faint)
 		})
 		if b.Clicked() {
@@ -300,7 +314,26 @@ func menu(c *ui.Context, d Deps, row ui.Element) {
 		}
 		prof := d.Profile()
 		if prof == nil {
-			if menuItem(c, d.Palette, appui.IconUser, "登录 QQ 音乐", "").AutoFocus().Clicked() {
+			r := d.Restore
+			if r.Failed || r.Loading {
+				retry := menuItem(c, d.Palette, appui.IconRepeat, "重试恢复登录", "").Disabled(r.Loading)
+				if !r.Loading {
+					retry.AutoFocus()
+				}
+				if retry.Clicked() {
+					*open = false
+					d.RetryRestore()
+				}
+			}
+			label := "登录 QQ 音乐"
+			if r.Failed {
+				label = "重新扫码登录"
+			}
+			scan := menuItem(c, d.Palette, appui.IconUser, label, "")
+			if !r.Failed || r.Loading {
+				scan.AutoFocus()
+			}
+			if scan.Clicked() {
 				*open = false
 				d.OpenLogin()
 			}

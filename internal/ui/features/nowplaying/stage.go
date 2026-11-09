@@ -12,6 +12,7 @@ import (
 	"lilt/internal/media/lyrics"
 	"lilt/internal/media/qqmusic"
 	"lilt/internal/ui/base/appui"
+	"lilt/internal/ui/base/theme"
 	"lilt/internal/ui/base/transport"
 )
 
@@ -307,30 +308,77 @@ func stageStyleButton(c *ui.Context, d Deps) {
 			label = s.Label
 		}
 	}
-	b := ui.ButtonBase(c.Key("stage-style")).Padding(6, 10, 6, 14).Radius(999).Gap(4).AlignItems(ui.Center).
+	m := ui.MenuBase(c.Key("stage-style"), d.StageStyleOpen)
+	b := m.Trigger.Padding(6, 10, 6, 14).Shrink(0).Radius(999).Gap(4).AlignItems(ui.Center).
 		FocusRing(false).Label("律动效果").Tooltip("律动效果")
-	bg, fg := ui.Transparent, white.Alpha(0.55)
-	if b.Hovered() {
-		bg, fg = white.Alpha(0.06), white.Alpha(0.8)
+	if w, _ := c.Size(); w < 1000 {
+		b.Padding(6, 8)
 	}
-	b.Background(b.AnimateColor("bg", bg, ui.Animation{Duration: 120 * time.Millisecond}))
+	appui.MediaFeedback(b, theme.Veil(8))
+	angle := float32(0)
+	if *d.StageStyleOpen {
+		b.Background(theme.Veil(2)).TextColor(theme.Paper)
+		angle = 180
+	}
 	b.Children(func() {
-		ui.Text(c, label).FontSize(13).FontWeight(600).TextColor(fg)
-		ui.Icon(c, appui.IconDown).Size(12, 12).TextColor(fg)
+		ui.Text(c, label).FontSize(13).FontWeight(600)
+		ui.Icon(c, appui.IconDown).Size(12, 12).Rotate(b.AnimateTo("arrow", angle, ui.Animation{Duration: 140 * time.Millisecond}))
 	})
-	b.Menu(func(m *ui.Menu) {
+	m.Popup(func(panel ui.Element) {
+		// The stage is a dark media surface even when the app's pages use the light theme.
+		panel.AttachTo(b, ui.AnchorBottomEnd, ui.AnchorTopEnd).Margin(6, 0, 0, 0).
+			Width(176).Padding(6).Gap(2).Radius(12).Background(theme.Neutral(true, 2)).
+			Border(0.5, theme.Neutral(true, 6)).Shadow(0, 8, 24, -4, theme.Shade(6)).Label("律动效果菜单")
 		for _, s := range StageStyles {
-			if m.Item(s.Label).Checked(d.Settings.StageStyle == s.ID).Chosen() && d.Settings.StageStyle != s.ID {
+			selected := d.Settings.StageStyle == s.ID
+			item := stageMenuRow(m.RadioItem(selected), selected).Label(s.Label)
+			item.Children(func() {
+				ui.Text(c, s.Label).FontSize(13).Grow(1)
+				ui.Box(c).Size(16, 16).Children(func() {
+					if selected {
+						ui.Icon(c, appui.IconCheck).Size(16, 16).TextColor(theme.Accent(true, 11))
+					}
+				})
+			})
+			if item.Clicked() && !selected {
 				d.Settings.StageStyle = s.ID
 				d.Settings.Save()
 			}
 		}
-		m.Separator()
-		if m.Item("火花").Checked(d.Settings.StageSparks).Chosen() {
+		ui.Box(c).Height(0.5).Margin(5, 10).Background(theme.Neutral(true, 6))
+		item := stageMenuRow(m.CheckItem(d.Settings.StageSparks), false).Label("火花")
+		item.Children(func() {
+			ui.Text(c, "火花").FontSize(13).Grow(1)
+			fill, knob, x := theme.Neutral(true, 6), theme.Neutral(true, 11), float32(2)
+			if d.Settings.StageSparks {
+				fill, knob, x = theme.Accent(true, 9), theme.Paper, 12
+			}
+			ui.Box(c).Size(26, 16).Radius(8).Background(fill).Children(func() {
+				ui.Box(c).Absolute().Left(x).Top(2).Size(12, 12).Radius(6).Background(knob)
+			})
+		})
+		if item.Clicked() {
 			d.Settings.StageSparks = !d.Settings.StageSparks
 			d.Settings.Save()
 		}
 	})
+}
+
+// stageMenuRow gives a row of the stage's menu the stage's look, in place of
+// the default menu's.
+func stageMenuRow(item ui.Element, selected bool) ui.Element {
+	item.Height(34).PaddingX(10).Gap(12).Radius(7).AlignItems(ui.Center).
+		TextColor(theme.Neutral(true, 12)).FocusRing(false)
+	if selected {
+		item.Background(theme.Neutral(true, 3))
+	}
+	if item.Highlighted() {
+		item.Background(theme.Neutral(true, 4))
+	}
+	if item.Pressed() {
+		item.Background(theme.Neutral(true, 5))
+	}
+	return item
 }
 
 // sparkTime is how long a word's sparks fly.

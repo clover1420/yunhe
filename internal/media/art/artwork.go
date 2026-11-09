@@ -99,6 +99,12 @@ func (c *Cache) Clock() time.Time { return c.now() }
 // SetClock sets the cache's time, which tests do.
 func (c *Cache) SetClock(now func() time.Time) { c.now = now }
 
+// Busy is how many covers are being fetched now.
+func (c *Cache) Busy() int { return len(c.busy) }
+
+// Peek is the cover kept for url, without marking it as asked for, or nil.
+func (c *Cache) Peek(url string) *Artwork { return c.art[url] }
+
 // Add keeps a cover, and drops those asked for least recently once the
 // covers take more than the limit, down to three quarters of it, so that
 // it sorts them seldom. Those showing were asked for last, and stay.

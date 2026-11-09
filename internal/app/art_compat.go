@@ -6,6 +6,9 @@ import "lilt/internal/media/art"
 // this package; feature packages import lilt/internal/media/art directly.
 type artwork = art.Artwork
 type artCache = art.Cache
+type artNeed = art.Needs
+
+const artCover = art.Cover
 
 var (
 	newArtCache = art.New

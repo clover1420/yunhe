@@ -51,10 +51,21 @@ func (a *app) paneTabs(c *ui.Context) {
 // whichever was chosen, for the next song.
 func (a *app) choosePane(i int) {
 	a.npPane = i
+	if i != paneLyrics {
+		a.lyricsSizeOpen = false
+	}
 	if (i == paneLyrics || i == paneStage) && a.settings.LyricsStage != (i == paneStage) {
 		a.settings.LyricsStage = i == paneStage
 		a.settings.Save()
 	}
+}
+
+// lyricsSizeChanged resets the lyrics' layout after the size changed: a
+// different size changes wrapping and line positions even while paused.
+func (a *app) lyricsSizeChanged() {
+	a.lyricAt = -2
+	a.lyricGlide = lyricGlide{}
+	a.settings.Save()
 }
 
 // radioChip says which radio plays, over the title: a click on it, or on

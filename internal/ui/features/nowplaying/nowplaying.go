@@ -63,6 +63,13 @@ type Deps struct {
 	LyricGlide    *Glide
 	LyricAt       *int
 	LyricTrack    *int64
+	LyricSize     *float32
+	LyricSizeAt   *time.Time
+
+	StageStyleOpen    *bool
+	LyricsSizeOpen    *bool
+	LyricsSizeTrigger *ui.Handle
+	LyricsSizeChanged func()
 
 	TopBar func(*ui.Context) float32
 
@@ -200,7 +207,7 @@ func Layer(c *ui.Context, d Deps, open, settled bool) {
 			k := 1 - clamp01(t)
 			from := m.FromRect()
 			x, y = from.X*k, from.Y*k
-			card.Top(y).Left(x).Right((w-from.X-from.W)*k).Bottom((h-from.Y-from.H)*k).
+			card.Top(y).Left(x).Right((w - from.X - from.W) * k).Bottom((h - from.Y - from.H) * k).
 				Radius(appui.NPFromRadius*k + 28*clamp01(shift/120)).Clip()
 			if shift != 0 {
 				s := 1 - 0.12*clamp01(shift/h)
@@ -246,8 +253,9 @@ func View(c *ui.Context, d Deps) {
 	}
 	root := ui.Box(c.Key("now-playing")).Absolute().Top(0).Left(0).Right(0).Bottom(0).
 		Background(bg).TextColor(white)
-	// The pointer is over the view whenever it is in the window.
-	pointerIn := root.Hovered()
+	// Keep the controls visible while the pointer is in their detached menu
+	// or size popover. The pointer is over the view whenever it is in the window.
+	pointerIn := root.Hovered() || *d.StageStyleOpen || *d.LyricsSizeOpen || d.LyricsSizeTrigger.Focused(c)
 	root.Children(func() {
 		bloom := ui.Box(c.Key("bloom")).Absolute().Top(0).Left(0).Right(0).Bottom(0).PassThrough()
 		if t := d.Motion.T; t < 1 && !d.Motion.Still {
@@ -303,6 +311,7 @@ func body(c *ui.Context, d Deps, tr *qqmusic.Track, art *art.Artwork, accent ui.
 			// controls a slim bar at the foot.
 			m.Rise(Reveal(TabsRow(c, w, h, d.TopBar(c)), pointerIn), 0).Children(func() {
 				d.PaneTabs(c)
+				ui.Spacer(c)
 				stageStyleButton(c, d)
 			})
 			Stage(c, d, tr, accent)
@@ -320,7 +329,13 @@ func body(c *ui.Context, d Deps, tr *qqmusic.Track, art *art.Artwork, accent ui.
 		// wide enough for the controls even when the cover is small.
 		side := max(coverSize, 280)
 		padX := npSideX(w)
-		m.Rise(Reveal(TabsRow(c, w, h, d.TopBar(c)), pointerIn), 0).Children(func() { d.PaneTabs(c) })
+		m.Rise(Reveal(TabsRow(c, w, h, d.TopBar(c)), pointerIn), 0).Children(func() {
+			d.PaneTabs(c)
+			if *d.Pane == PaneLyrics {
+				ui.Spacer(c)
+				LyricsSizeButton(c, d)
+			}
+		})
 		ui.Row(c).Grow(1).Padding(0, padX, 44, padX).Gap(72).AlignItems(ui.Stretch).Children(func() {
 			var coverTop float32
 			ui.Column(c).Width(side).Justify(ui.Center).Gap(0).Children(func() {
@@ -428,7 +443,11 @@ func collapseButton(c *ui.Context) ui.Element {
 // still as the comments' count changes or the stage's style button appears.
 func TabsRow(c *ui.Context, w, h float32, top float32) ui.Element {
 	left := npSideX(w) + max(npCoverSize(w, h), 280) + 72
-	return ui.Row(c.Key("tabs")).Absolute().Top(top).Left(left).Height(TabsHeight).Gap(6).AlignItems(ui.Center)
+	gap := float32(6)
+	if w < 1000 {
+		gap = 4
+	}
+	return ui.Row(c.Key("tabs")).Absolute().Top(top).Left(left).Right(npSideX(w)).Height(TabsHeight).Gap(gap).AlignItems(ui.Center)
 }
 
 // Reveal fades e in while the pointer is in the window, and out when it

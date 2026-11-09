@@ -12,33 +12,79 @@ import (
 // the login's state and these names while its views still live here.
 type loginState = accountpkg.State
 
+// accountRestoreState is how restoring the saved login is going.
+type accountRestoreState struct {
+	gen     int
+	loading bool
+	failed  bool
+	boot    bool
+}
+
 // beginLoginQR is replaced by UI tests so retry actions never contact QQ.
 var beginLoginQR = qqmusic.QRKey
 var beginWechatLoginQR = qqmusic.WechatQRKey
+
+// Restoration tests isolate credential reads and the page loads that follow a recovered account.
+var restoreLoginSession = qqmusic.RestoreSession
+var readLoginAccount = qqmusic.Account
+
+// applyLoginProfile is assigned in init: taking the method at package scope
+// would form an initialization cycle through the login helpers.
+var applyLoginProfile func(*app, *qqmusic.Profile)
+
+func init() { applyLoginProfile = (*app).signedIn }
 
 // boot signs in with the session in the keychain, if any, then loads the
 // home page for whoever is listening.
 func (a *app) boot() {
 	a.homeLoading = true
+	a.startAccountRestore(true)
+}
+
+// startAccountRestore reads saved credentials at boot; retries use the retained in-memory session.
+func (a *app) startAccountRestore(boot bool) {
+	if a.accountRestore.loading {
+		return
+	}
+	a.accountRestore.gen++
+	a.accountRestore.loading = true
+	a.accountRestore.boot = boot
+	gen := a.accountRestore.gen
 	go func() {
 		var prof *qqmusic.Profile
-		if qqmusic.RestoreSession() {
-			p, err := qqmusic.Account()
-			switch {
-			case err == nil && p == nil:
-				qqmusic.ClearSession() // expired
-			case err == nil:
-				prof = p
-			}
+		var err error
+		if !boot || restoreLoginSession() {
+			prof, err = readLoginAccount()
 		}
 		a.post(func() {
-			a.signedIn(prof)
+			if !a.acceptAccountRestore(gen, prof, err) {
+				return
+			}
+			if boot || err == nil {
+				applyLoginProfile(a, a.profile)
+				a.accountRestore.failed = err != nil
+			}
 		})
 	}()
 }
 
+// acceptAccountRestore applies only the active request; failure keeps the session available to retry.
+func (a *app) acceptAccountRestore(gen int, prof *qqmusic.Profile, err error) bool {
+	if gen != a.accountRestore.gen || !a.accountRestore.loading {
+		return false
+	}
+	a.accountRestore.loading = false
+	a.accountRestore.boot = false
+	a.accountRestore.failed = err != nil
+	if err == nil {
+		a.profile = prof
+	}
+	return true
+}
+
 // signedIn shows what is personal to prof, or to nobody.
 func (a *app) signedIn(prof *qqmusic.Profile) {
+	a.accountRestore = accountRestoreState{gen: a.accountRestore.gen + 1}
 	a.profile = prof
 	// Playback picks up where it was left, once the session that lets
 	// the listener play their songs is back.
@@ -74,9 +120,13 @@ func (a *app) accountDeps() accountpkg.Deps {
 		Login:       &a.login,
 		AccountOpen: &a.accountOpen,
 		Profile:     func() *qqmusic.Profile { return a.profile },
-		Post:        a.post,
-		SignedIn:    a.signedIn,
-		BeginQR:     func() (string, error) { return beginLoginQR() },
+		Restore:     accountpkg.RestoreState{Loading: a.accountRestore.loading, Failed: a.accountRestore.failed},
+		RetryRestore: func() {
+			a.startAccountRestore(false)
+		},
+		Post:     a.post,
+		SignedIn: a.signedIn,
+		BeginQR:  func() (string, error) { return beginLoginQR() },
 		BeginWechatQR: func() (string, error) {
 			return beginWechatLoginQR()
 		},
@@ -96,6 +146,13 @@ func (a *app) accountDeps() accountpkg.Deps {
 func (a *app) openLogin() { a.openLoginChannel(false) }
 
 func (a *app) openLoginChannel(wechat bool) {
+	if a.accountRestore.loading && a.accountRestore.boot {
+		// Choosing a fresh login must still finish startup if the QR is later dismissed.
+		applyLoginProfile(a, nil)
+	}
+	a.accountRestore.gen++
+	a.accountRestore.loading = false
+	a.accountRestore.boot = false
 	accountpkg.Start(a.accountDeps(), wechat)
 }
 

@@ -16,6 +16,10 @@ type coverState = nowplaying.CoverState
 type wallState = nowplaying.WallState
 type lyricGlide = nowplaying.Glide
 
+// lyricsFontSize is the size the scrolling lyrics are set in, clamped to
+// what the size popover offers.
+func lyricsFontSize(s *settings) float64 { return nowplaying.LyricsFontSize(s) }
+
 // coverKey keys a cover's element by its song and its fling.
 type coverKey struct {
 	id  int64
@@ -64,6 +68,12 @@ func (a *app) nowplayingDeps() nowplaying.Deps {
 		LyricGlide:        &a.lyricGlide,
 		LyricAt:           &a.lyricAt,
 		LyricTrack:        &a.lyricTrack,
+		LyricSize:         &a.lyricSize,
+		LyricSizeAt:       &a.lyricSizeAt,
+		StageStyleOpen:    &a.stageStyleOpen,
+		LyricsSizeOpen:    &a.lyricsSizeOpen,
+		LyricsSizeTrigger: &a.lyricsSizeTrigger,
+		LyricsSizeChanged: a.lyricsSizeChanged,
 		TopBar:            topBar,
 		SetButtonsTheme:   a.npButtonsTheme,
 		ClearBackdrop:     func() { a.backdropCache = backdropCache{} },

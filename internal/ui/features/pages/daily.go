@@ -37,6 +37,11 @@ type SpinState struct {
 	last         time.Time
 }
 
+// Speed is the record's current speed, 0 while it stands still, 1 while it
+// turns; setting it skips the easing, as a page shown again would.
+func (s *SpinState) Speed() float64     { return s.speed }
+func (s *SpinState) SetSpeed(v float64) { s.speed = v }
+
 // Step turns the record on to now, its speed easing to to, and reports
 // whether it still turns.
 func (s *SpinState) Step(now time.Time, to float64) bool {
@@ -380,6 +385,12 @@ func DailyPicks(c *ui.Context, d DailyDeps, songs []qqmusic.Track) {
 // far as out, the two covers after it behind; fanned, they spread.
 func DailyStack(c *ui.Context, d DailyDeps, songs []qqmusic.Track, fanned bool, out float32) {
 	spring := ui.Animation{Spring: ui.SpringOptions{Duration: 600 * time.Millisecond, Bounce: 0.3}}
+	cover := songs[0].Album.PicURL
+	if tr := d.Player.Current(); tr != nil && tr.Album.PicURL != "" {
+		cover = tr.Album.PicURL
+	}
+	// The small label shares the player bar's cover, without another image size.
+	label := appui.Bitmap(d.Art.Get(qqmusic.Sized(cover, 120), art.Cover))
 	ui.Box(c.Key("stack")).Size(StackWidth, SleeveSize).Shrink(0).Children(func() {
 		// The covers behind, the farthest first.
 		for i := min(2, len(songs)-1); i >= 1; i-- {
@@ -395,11 +406,15 @@ func DailyStack(c *ui.Context, d DailyDeps, songs []qqmusic.Track, fanned bool, 
 		}
 		// The record, behind its sleeve.
 		mid := float32(SleeveLeft + SleeveSize/2)
-		cover := d.Art.Get(qqmusic.Sized(songs[0].Album.PicURL, 240), art.Cover)
 		ui.Box(c.Key("record")).Absolute().Left(mid+recordOut(out)-RecordSize/2).Top((SleeveSize-RecordSize)/2).
 			Size(RecordSize, RecordSize).Radius(RecordSize/2).Shadow(0, 8, 20, -4, theme.Ink.Alpha(0.5)).
 			Draw(func(p *ui.Painter, r ui.Rect) {
-				drawRecord(p, r, appui.Bitmap(cover), d.Spin.angleNow())
+				drawRecord(p, r, label, d.Spin.angleNow())
+				// Each moving Draw must request its own repaint; the backdrop's
+				// request alone leaves this record cached between view updates.
+				if d.Spin.speed > 0 {
+					p.AnimationFrameRate(DailyRate)
+				}
 			})
 		// The sleeve.
 		sleeve := ui.Box(c.Key("sleeve")).Absolute().Left(SleeveLeft).Top(0).Size(SleeveSize, SleeveSize).Radius(14).

@@ -67,6 +67,17 @@ func LyricsPane(c *ui.Context, d Deps, tr *qqmusic.Track, h float32) {
 		*d.LyricScroll, *d.LyricGlide = ui.ScrollState{}, Glide{}
 	}
 	lag := d.LyricGlide.Step(c, d.LyricScroll)
+	// Redraw as the next line begins, and as the size popover changes it.
+	size := float32(LyricsFontSize(d.Settings))
+	if *d.LyricSize != size {
+		if *d.LyricSize != 0 {
+			*d.LyricSizeAt = c.Now()
+		}
+		*d.LyricSize, *d.LyricAt = size, -2
+	}
+	// Builds can repeat before layout commits. Keep waiting for that entire
+	// frame, so following uses the new geometry rather than a previous pass.
+	resized := !(*d.LyricSizeAt).IsZero() && (*d.LyricSizeAt).Equal(c.Now())
 
 	scroll := ui.Scroll(c.Key("lyrics")).Grow(1).TrackScroll(d.LyricScroll).Padding(0, 8, h*0.5, 0)
 	dim, quiet := d.QuietShown(c, scroll, tr, lines, loaded)
@@ -75,7 +86,7 @@ func LyricsPane(c *ui.Context, d Deps, tr *qqmusic.Track, h float32) {
 		scroll.Invisible()
 	}
 	defer d.QuietCard(c, dim, h*0.18)
-	TimedLines(c, ly, scroll, lines, pos, cur, lag, LinesStyle{Size: 30, Weight: 800, LineHeight: 1.25, Quiet: quiet}, nil)
+	TimedLines(c, ly, scroll, lines, pos, cur, lag, LinesStyle{Size: size, TranslationSize: 17 * size / LyricsFontSizeDefault, Weight: 800, LineHeight: 1.25, Quiet: quiet, Relayout: resized}, nil)
 }
 
 // Lyrics is what the timed lines need of the app they draw in.
@@ -91,10 +102,12 @@ type Lyrics struct {
 // LinesStyle is how TimedLines sets its lines: the size, weight and
 // leading of their type; quiet nearly hides them, under a hot comment.
 type LinesStyle struct {
-	Size       float32
-	Weight     int
-	LineHeight float32
-	Quiet      bool
+	Size            float32
+	TranslationSize float32
+	Weight          int
+	LineHeight      float32
+	Quiet           bool
+	Relayout        bool // wait for the new size's committed bounds before following
 }
 
 // TimedLines fills scroll with lines that follow the track playing at
@@ -153,7 +166,11 @@ func TimedLines(c *ui.Context, l Lyrics, scroll ui.Element, lines []lyrics.Line,
 							ui.Text(c, line.Text).FontSize(st.Size).FontWeight(st.Weight).LineHeight(st.LineHeight).LetterSpacing(-0.4).TextColor(white)
 						}
 						if line.Translation != "" {
-							ui.Text(c, line.Translation).FontSize(17).FontWeight(600).TextColor(white.Alpha(0.7))
+							size := st.TranslationSize
+							if size == 0 {
+								size = 17
+							}
+							ui.Text(c, line.Translation).FontSize(size).FontWeight(600).TextColor(white.Alpha(0.7))
 						}
 						// The line sung again in light, over it and blurred.
 						if on && l.glows() {
@@ -173,6 +190,10 @@ func TimedLines(c *ui.Context, l Lyrics, scroll ui.Element, lines []lyrics.Line,
 			foot()
 		}
 	})
+	if st.Relayout {
+		c.AnimationFrame()
+		return
+	}
 	// Bring the line sung to a third of the way down, once it changed.
 	if cur != *l.At {
 		box := scroll.Bounds()

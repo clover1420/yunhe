@@ -10,7 +10,29 @@ import (
 	"lilt/internal/media/art"
 	"lilt/internal/media/lyrics"
 	"lilt/internal/media/qqmusic"
+	"lilt/internal/ui/features/pages"
 )
+
+// The turning daily record used to stay cached because only its backdrop requested frames.
+func TestDailyRecordFrameBudget(t *testing.T) {
+	a := newTestApp()
+	a.dailySpin.SetSpeed(1)
+	songs := []qqmusic.Track{{ID: 7}}
+	tt := ui.NewTester(func(c *ui.Context) {
+		pages.DailyStack(c, a.dailyDeps(), songs, false, 1)
+	}, stackWidth, sleeveSize)
+	tt.Frame()
+	tt.Advance(time.Second)
+	if !tt.FramePending() {
+		t.Fatal("turning record does not request its own animation frames")
+	}
+	a.dailySpin.SetSpeed(0)
+	tt.Frame()
+	tt.Advance(time.Second)
+	if tt.FramePending() {
+		t.Fatal("stopped record keeps requesting animation frames")
+	}
+}
 
 // Hovering a paused player control stops requesting frames once its feedback settles.
 func TestPlayerBarHoverFrameBudget(t *testing.T) {

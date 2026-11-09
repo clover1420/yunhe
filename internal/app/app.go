@@ -71,20 +71,21 @@ type app struct {
 	splashed bool      // the record has come in, as the app started
 	splashAt time.Time // when it started to
 
-	profile      *qqmusic.Profile
-	mine, saved  []qqmusic.Playlist // the listener's playlists: made, and saved
-	recPlaylists []qqmusic.Playlist // playlists picked for the listener by the home feed
-	songShelves  *songShelfData
-	shelfPagers  map[*qqmusic.SongShelf]*songShelfPager
-	login        loginState
-	accountOpen  bool           // the dropdown of the account row shows
-	naming       nameDialog     // the name of a playlist asked for
-	deleting     deleteDialog   // whether to delete a playlist, asked
-	liked        map[int64]bool // the songs the listener likes
-	likedAlbums  *likedAlbumData
-	likedScroll  likedScrollState
-	toast        string   // a message to show once
-	picked       pickedUp // the song a login picked up, waiting to play
+	profile        *qqmusic.Profile
+	mine, saved    []qqmusic.Playlist // the listener's playlists: made, and saved
+	recPlaylists   []qqmusic.Playlist // playlists picked for the listener by the home feed
+	songShelves    *songShelfData
+	shelfPagers    map[*qqmusic.SongShelf]*songShelfPager
+	login          loginState
+	accountRestore accountRestoreState
+	accountOpen    bool           // the dropdown of the account row shows
+	naming         nameDialog     // the name of a playlist asked for
+	deleting       deleteDialog   // whether to delete a playlist, asked
+	liked          map[int64]bool // the songs the listener likes
+	likedAlbums    *likedAlbumData
+	likedScroll    likedScrollState
+	toast          string   // a message to show once
+	picked         pickedUp // the song a login picked up, waiting to play
 
 	// The episodes the listener likes, and doesn't, as far as NetEase has
 	// answered, and those asked about: see ui_like.go.
@@ -132,10 +133,16 @@ type app struct {
 	lyricGlide  lyricGlide
 	lyricAt     int
 	lyricTrack  int64
+	lyricSize   float32   // size used for the preceding lyrics layout
+	lyricSizeAt time.Time // frame in which the lyrics changed size
 	queueList   ui.ListState
 	queueAt     int // the row of the queue pane last scrolled to, -1 while it is hidden
 	comments    commentState
 	tabCount    rollState // the count on the comments' tab, as it rolls
+
+	stageStyleOpen    bool // the stage's effect menu shows
+	lyricsSizeOpen    bool // the scrolling lyrics' size popover shows
+	lyricsSizeTrigger ui.Handle
 
 	queueOpen    bool // the player bar's floating queue shows
 	queuePopup   ui.ListState
