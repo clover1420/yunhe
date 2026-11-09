@@ -311,7 +311,6 @@ func body(c *ui.Context, d Deps, tr *qqmusic.Track, art *art.Artwork, accent ui.
 			// controls a slim bar at the foot.
 			m.Rise(Reveal(TabsRow(c, w, h, d.TopBar(c)), pointerIn), 0).Children(func() {
 				d.PaneTabs(c)
-				ui.Spacer(c)
 				stageStyleButton(c, d)
 			})
 			Stage(c, d, tr, accent)
@@ -332,7 +331,6 @@ func body(c *ui.Context, d Deps, tr *qqmusic.Track, art *art.Artwork, accent ui.
 		m.Rise(Reveal(TabsRow(c, w, h, d.TopBar(c)), pointerIn), 0).Children(func() {
 			d.PaneTabs(c)
 			if *d.Pane == PaneLyrics {
-				ui.Spacer(c)
 				LyricsSizeButton(c, d)
 			}
 		})
