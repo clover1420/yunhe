@@ -11,6 +11,10 @@ import (
 	"lilt/internal/ui/base/theme"
 )
 
+// SearchMine is the kind of search that looks through the songs of the
+// listener's own playlists rather than asking QQ Music.
+const SearchMine qqmusic.SearchType = -1
+
 // SearchKinds are the kinds of search, as their tabs show them.
 var SearchKinds = []struct {
 	Kind        qqmusic.SearchType
@@ -19,6 +23,7 @@ var SearchKinds = []struct {
 	{qqmusic.SearchSongs, "单曲", "首单曲"},
 	{qqmusic.SearchArtists, "歌手", "位歌手"},
 	{qqmusic.SearchAlbums, "专辑", "张专辑"},
+	{SearchMine, "我的歌单", "首歌曲"},
 }
 
 // SearchInfo is what a search found, as far as its pages have loaded.
@@ -70,7 +75,7 @@ func SearchPage(c *ui.Context, d SearchDeps) {
 			d.Empty(c, "没有找到相关结果")
 		}
 	}
-	if r.Kind == qqmusic.SearchSongs {
+	if r.Kind == qqmusic.SearchSongs || r.Kind == SearchMine {
 		if !info.Loaded && info.Loading {
 			d.Skeleton(c, header)
 			return

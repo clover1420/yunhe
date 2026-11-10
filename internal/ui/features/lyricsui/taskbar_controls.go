@@ -4,6 +4,7 @@ import (
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
+	"lilt/internal/core/settings"
 	"lilt/internal/ui/base/transport"
 )
 
@@ -11,7 +12,31 @@ const (
 	// TaskbarControlsWidth and TaskbarControlsHeight size the taskbar's song controls.
 	TaskbarControlsWidth  = 360
 	TaskbarControlsHeight = 124
+
+	TaskbarMaterialWhite   = "white"
+	TaskbarMaterialAcrylic = "acrylic"
 )
+
+// TaskbarControlsVibrancy is the material the taskbar's song controls use.
+func TaskbarControlsVibrancy(s *settings.Settings) mygo.Vibrancy {
+	if s.TaskbarLyricsMaterial == TaskbarMaterialWhite {
+		return mygo.VibrancyNone
+	}
+	return mygo.VibrancyAcrylic
+}
+
+// SetLyricsMaterial switches the taskbar's song controls between the opaque
+// white panel and the acrylic backdrop, and keeps the choice.
+func (d *Taskbar) SetLyricsMaterial(material string) {
+	d.Settings.TaskbarLyricsMaterial = material
+	if d.SaveSettings != nil {
+		d.SaveSettings()
+	}
+	if d.Controls != nil && !d.Controls.IsDestroyed() {
+		d.Controls.SetVibrancy(TaskbarControlsVibrancy(d.Settings))
+	}
+	d.Redraw()
+}
 
 // Only the cover owns an interactive taskbar rectangle; the lyric host stays
 // transparent to input, including clicks sent to Explorer's other threads.
@@ -98,8 +123,11 @@ func (d *Taskbar) ToggleControls() {
 	w := mygo.NewFlyout(mygo.FlyoutOptions{
 		Parent: d.CoverWin, Anchor: mygo.Rectangle{Width: bounds.Width, Height: bounds.Height},
 		Placement: mygo.PlacementTopStart, Gap: 16, Width: TaskbarControlsWidth, Height: TaskbarControlsHeight,
-		Focusable: true, Shadow: true, Hidden: true, Vibrancy: mygo.VibrancyAcrylic, Content: ui.View(d.ControlsView),
+		Focusable: true, Shadow: true, Hidden: true, Vibrancy: TaskbarControlsVibrancy(d.Settings), Content: ui.View(d.ControlsView),
 	})
+	// Windows can enable a backdrop later only when the window was created
+	// with material support. Disable it before showing the opaque white panel.
+	w.SetVibrancy(TaskbarControlsVibrancy(d.Settings))
 	d.Controls = w
 	w.OnClosed(func() {
 		if d.Controls == w {

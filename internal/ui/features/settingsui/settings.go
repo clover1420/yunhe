@@ -103,28 +103,31 @@ type Deps struct {
 	Notch       bool
 	Updates     bool
 	CacheMoving bool
+	// TaskbarLyrics shows the taskbar panel's material choice.
+	TaskbarLyrics bool
 
-	Theme           func(*ui.Context) theme.Palette
-	Ink             func(onDark bool) Ink
-	PaneLook        func(ui.Element, float32, bool) ui.Element
-	Insets          func(*ui.Context) (top, bottom float32)
-	StartMark       func(*ui.Context)
-	EndMark         func(*ui.Context)
-	MeasureCache    func()
-	ShowMain        func()
-	Redraw          func()
-	Changed         func()
-	CanHideOnClose  func() bool
-	ChangeAppIcon   func()
-	CacheUsage      func() string
-	CacheUsed       func() int64
-	CacheDirRow     func(*ui.Context)
-	ApplyCacheLimit func()
-	ClearCache      func()
-	RefreshGain     func()
-	SetLyricsMode   func(string)
-	Fonts           func() []Font
-	LoadFont        func()
+	Theme                    func(*ui.Context) theme.Palette
+	Ink                      func(onDark bool) Ink
+	PaneLook                 func(ui.Element, float32, bool) ui.Element
+	Insets                   func(*ui.Context) (top, bottom float32)
+	StartMark                func(*ui.Context)
+	EndMark                  func(*ui.Context)
+	MeasureCache             func()
+	ShowMain                 func()
+	Redraw                   func()
+	Changed                  func()
+	CanHideOnClose           func() bool
+	ChangeAppIcon            func()
+	CacheUsage               func() string
+	CacheUsed                func() int64
+	CacheDirRow              func(*ui.Context)
+	ApplyCacheLimit          func()
+	ClearCache               func()
+	RefreshGain              func()
+	SetLyricsMode            func(string)
+	SetTaskbarLyricsMaterial func(string)
+	Fonts                    func() []Font
+	LoadFont                 func()
 
 	CheckForUpdates    func()
 	LastUpdateCheck    func() time.Time
@@ -507,6 +510,17 @@ func content(c *ui.Context, d Deps) {
 			})
 			row("桌面歌词颜色", "", func() {
 				desktopLyricsColorControl(c, d)
+			})
+		}
+		if d.TaskbarLyrics {
+			row("任务栏面板材质", "", func() {
+				i := 0
+				if s.TaskbarLyricsMaterial == lyricsui.TaskbarMaterialWhite {
+					i = 1
+				}
+				if appui.Segmented(c.Key("taskbar-lyrics-material"), &i, "亚克力", "白色") {
+					d.SetTaskbarLyricsMaterial([]string{lyricsui.TaskbarMaterialAcrylic, lyricsui.TaskbarMaterialWhite}[i])
+				}
 			})
 		}
 		row("进度条特效", "", func() {

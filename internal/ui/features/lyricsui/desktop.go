@@ -16,15 +16,16 @@ import (
 
 // Deps are what a lyrics window needs from the app.
 type Deps struct {
-	Player      *player.Player
-	Settings    *settings.Settings
-	Art         *art.Cache
-	Post        func(func())
-	Redraw      func()
-	Quitting    func() bool
-	MainWindow  func() *mygo.Window
-	RefreshTray func()
-	SetEnabled  func(bool)
+	Player       *player.Player
+	Settings     *settings.Settings
+	Art          *art.Cache
+	Post         func(func())
+	Redraw       func()
+	Quitting     func() bool
+	MainWindow   func() *mygo.Window
+	RefreshTray  func()
+	SetEnabled   func(bool)
+	SaveSettings func()
 }
 
 // DesktopLyricsWidth is the default width of the desktop lyrics panel.
@@ -39,6 +40,11 @@ type Desktop struct {
 	Width         float64
 	DesiredHeight int
 	Revision      uint64
+
+	// WorkAreaOverride adjusts a display's work area, when the platform
+	// reports one that covers panels; StopWorkArea stops watching it.
+	WorkAreaOverride func(mygo.Rectangle) mygo.Rectangle
+	StopWorkArea     func()
 }
 
 // SupportsDesktopLyrics reports whether the platform has a desktop lyrics
@@ -76,6 +82,7 @@ func (d *Desktop) Sync() {
 	})
 	d.Win = w
 	styleDesktopLyricsWindow(w)
+	watchDesktopLyricsWorkArea(d)
 	d.DesiredHeight = 0
 	d.Width = float64(w.Bounds().Width)
 	setDesktopLyricsIgnoreMouse(w, d.Settings.DesktopLyricsLocked)
@@ -94,6 +101,7 @@ func (d *Desktop) Sync() {
 	})
 	w.OnClosed(func() {
 		if d.Win == w {
+			d.ClearWorkAreaWatcher()
 			d.Win = nil
 			if d.OffDisplays != nil {
 				d.OffDisplays()
@@ -106,13 +114,14 @@ func (d *Desktop) Sync() {
 			return
 		}
 		r := d.Win.Bounds()
-		work := mygo.Screen.DisplayMatching(r).WorkArea
+		work := d.WorkArea(r)
 		d.Win.SetBounds(ClampBounds(r, work))
 	})
 }
 
 // Destroy closes the panel, keeping the listener's preference.
 func (d *Desktop) Destroy() {
+	d.ClearWorkAreaWatcher()
 	if d.OffDisplays != nil {
 		d.OffDisplays()
 		d.OffDisplays = nil
@@ -122,6 +131,36 @@ func (d *Desktop) Destroy() {
 		w.Close()
 	}
 	d.DesiredHeight = 0
+}
+
+// ClearWorkAreaWatcher stops watching the platform's panels, if watched.
+func (d *Desktop) ClearWorkAreaWatcher() {
+	if d.StopWorkArea != nil {
+		d.StopWorkArea()
+		d.StopWorkArea = nil
+	}
+	d.WorkAreaOverride = nil
+}
+
+// WorkArea is the work area of the display r is on, as the platform's panels
+// leave it.
+func (d *Desktop) WorkArea(r mygo.Rectangle) mygo.Rectangle {
+	work := mygo.Screen.DisplayMatching(r).WorkArea
+	if d.WorkAreaOverride != nil {
+		return d.WorkAreaOverride(work)
+	}
+	return work
+}
+
+// FitWorkArea keeps the panel inside the work area.
+func (d *Desktop) FitWorkArea() {
+	if d.Win == nil {
+		return
+	}
+	r := d.Win.Bounds()
+	if next := ClampBounds(r, d.WorkArea(r)); next != r {
+		d.Win.SetBounds(next)
+	}
 }
 
 func (d *Desktop) Close() { d.SetEnabled(false) }
@@ -163,7 +202,7 @@ func (d *Desktop) FitHeight(height float64) {
 		return
 	}
 	w := d.Win
-	work := mygo.Screen.DisplayMatching(w.Bounds()).WorkArea
+	work := d.WorkArea(w.Bounds())
 	h := min(work.Height, max(100, int(math.Ceil(height))))
 	if h == d.DesiredHeight {
 		return
@@ -196,7 +235,7 @@ func (d *Desktop) ResizeWidth(delta float64) {
 		return
 	}
 	r := d.Win.Bounds()
-	work := mygo.Screen.DisplayMatching(r).WorkArea
+	work := d.WorkArea(r)
 	r.Width = min(work.Width, max(320, r.Width+int(math.Round(delta))))
 	r = ClampBounds(r, work)
 	d.Width = float64(r.Width)

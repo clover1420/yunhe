@@ -12,6 +12,13 @@ type desktopLyrics = lyricsui.Desktop
 type taskbarLyrics = lyricsui.Taskbar
 type taskbarLyricsPlacement = lyricsui.Placement
 
+const (
+	taskbarMaterialWhite   = lyricsui.TaskbarMaterialWhite
+	taskbarMaterialAcrylic = lyricsui.TaskbarMaterialAcrylic
+)
+
+var taskbarControlsVibrancy = lyricsui.TaskbarControlsVibrancy
+
 func (a *app) refreshLyricsTray() {
 	if a.tray != nil {
 		a.tray.SetMenu(a.trayMenu())
@@ -23,15 +30,24 @@ func supportsTaskbarLyrics() bool { return lyricsui.SupportsTaskbarLyrics() }
 
 func (a *app) lyricsDeps() lyricsui.Deps {
 	return lyricsui.Deps{
-		Player:      a.pl,
-		Settings:    &a.settings,
-		Art:         a.art,
-		Post:        a.post,
-		Redraw:      a.redraw,
-		Quitting:    func() bool { return a.quitting },
-		MainWindow:  func() *mygo.Window { return a.win },
-		RefreshTray: a.refreshLyricsTray,
-		SetEnabled:  a.setDesktopLyricsEnabled,
+		Player:       a.pl,
+		Settings:     &a.settings,
+		Art:          a.art,
+		Post:         a.post,
+		Redraw:       a.redraw,
+		Quitting:     func() bool { return a.quitting },
+		MainWindow:   func() *mygo.Window { return a.win },
+		RefreshTray:  a.refreshLyricsTray,
+		SetEnabled:   a.setDesktopLyricsEnabled,
+		SaveSettings: func() { a.settings.Save() },
+	}
+}
+
+// setTaskbarLyricsMaterial switches the taskbar's song controls between the
+// acrylic backdrop and the opaque white panel.
+func (a *app) setTaskbarLyricsMaterial(material string) {
+	if a.taskbarLyrics != nil {
+		a.taskbarLyrics.SetLyricsMaterial(material)
 	}
 }
 

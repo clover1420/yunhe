@@ -19,15 +19,19 @@ type taskbarControlsTrack struct {
 // main window.
 func (d *Taskbar) ControlsView(c *ui.Context) {
 	th := *c.Theme()
+	white := d.Settings.TaskbarLyricsMaterial == TaskbarMaterialWhite
+	material := !white && c.Vibrancy()
 	// The material follows app appearance, which can differ from the taskbar.
-	if !c.Vibrancy() {
+	if white {
+		th.Dark = false
+	} else if !material {
 		th.Dark = d.Dark
 	}
 	c.SetTheme(&th)
 	dark := th.Dark
 	background, text := theme.Neutral(dark, 2), theme.Neutral(dark, 12)
 	muted := theme.Neutral(dark, 11)
-	if c.Vibrancy() {
+	if material {
 		background = ui.Transparent
 	}
 	c.Root().Background(background)
