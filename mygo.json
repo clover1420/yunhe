@@ -2,7 +2,7 @@
   "name": "Yunhe",
   "identifier": "dev.amamiya.qqmusic",
   "slug": "yunhe",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "out": "build",
   "resources": ["LICENSE", "THIRD_PARTY_NOTICES.md", "README.md"],
   "updates": {
