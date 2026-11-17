@@ -9,6 +9,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
+	"lilt/internal/media/player"
 	"lilt/internal/media/qqmusic"
 )
 
@@ -40,6 +41,13 @@ type Deps struct {
 	Remove     func(pid, id int64) error
 	Delete     func(id int64) error
 	Unfavorite func(id int64) error
+
+	Cache             func() *player.Cache
+	Invalidate        func(id int64)
+	MarkSynced        func(id int64)
+	PutPlaylist       func(*qqmusic.Playlist)
+	SavePlaylist      func(*qqmusic.Playlist)
+	SaveUserPlaylists func()
 }
 
 // NameDialog asks for a playlist's name: a new one's, or one's new name.
@@ -82,8 +90,27 @@ func Saved(d Deps, id int64) *qqmusic.Playlist {
 
 // LoadMine loads the playlists the listener uid made and saved.
 func LoadMine(d Deps, uid int64) {
+	var cache *player.Cache
+	if d.Cache != nil {
+		cache = d.Cache()
+	}
 	go func() {
+		if cache != nil {
+			if made, saved, ok := cache.LookupUserPlaylists(uid); ok {
+				for _, p := range made {
+					qqmusic.RememberOwnedPlaylist(p.ID)
+				}
+				d.Post(func() {
+					if d.Profile() != nil && d.Profile().UserID == uid && *d.Mine == nil && *d.Saved == nil {
+						*d.Mine, *d.Saved = made, saved
+					}
+				})
+			}
+		}
 		made, saved, err := qqmusic.UserPlaylists(uid)
+		if err == nil && cache != nil {
+			cache.KeepUserPlaylists(uid, made, saved)
+		}
 		d.Post(func() {
 			if err == nil && d.Profile() != nil && d.Profile().UserID == uid {
 				*d.Mine, *d.Saved = made, saved
@@ -95,7 +122,7 @@ func LoadMine(d Deps, uid int64) {
 // Changed forgets what was loaded of playlist id, which NetEase changed:
 // loaded anew if shown, and the sidebar's covers with it.
 func Changed(d Deps, id int64) {
-	delete(*d.Playlists, id)
+	d.Invalidate(id)
 	d.ReloadPlaylist(id)
 	if p := d.Profile(); p != nil {
 		LoadMine(d, p.UserID)
@@ -141,7 +168,9 @@ func SubmitName(d Deps) {
 				if err != nil {
 					setName(d, id, old)
 					*d.Toast = "重命名失败，请稍后再试"
+					return
 				}
+				d.SaveUserPlaylists()
 			})
 		}()
 		return
@@ -164,7 +193,10 @@ func SubmitName(d Deps) {
 			}
 			*d.Mine = slices.Insert(*d.Mine, at, *pl)
 			pl.Tracks = nil
-			(*d.Playlists)[pl.ID] = pl
+			d.MarkSynced(pl.ID)
+			d.PutPlaylist(pl)
+			d.SavePlaylist(pl)
+			d.SaveUserPlaylists()
 			d.OpenPlaylist(pl.ID)
 			if add != nil {
 				AddTo(d, pl.ID, add)
@@ -219,7 +251,8 @@ func FinishRemoval(d Deps, pl qqmusic.Playlist, saved bool, index int, err error
 		*lists = slices.Insert(*lists, min(index, len(*lists)), pl)
 		return
 	}
-	delete(*d.Playlists, pl.ID)
+	d.Invalidate(pl.ID)
+	d.SaveUserPlaylists()
 	*d.Toast = "已删除歌单"
 	if saved {
 		*d.Toast = "已取消收藏"
@@ -232,6 +265,7 @@ func setName(d Deps, id int64, name string) {
 	}
 	if pl := (*d.Playlists)[id]; pl != nil {
 		pl.Name = name
+		d.SavePlaylist(pl)
 	}
 }
 
@@ -277,6 +311,9 @@ func RemoveFrom(d Deps, pid int64, tr *qqmusic.Track) {
 			}
 			// The songs listed are right: only the sidebar's covers may
 			// have changed.
+			if pl != nil && (*d.Playlists)[pid] == pl {
+				d.SavePlaylist(pl)
+			}
 			if p := d.Profile(); p != nil {
 				LoadMine(d, p.UserID)
 			}

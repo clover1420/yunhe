@@ -5,6 +5,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
+	"lilt/internal/media/player"
 	"lilt/internal/media/qqmusic"
 	"lilt/internal/ui/features/playlistedit"
 )
@@ -63,6 +64,13 @@ func (a *app) playlistTools() playlistedit.Deps {
 		Remove:     func(pid, id int64) error { return removeFromPlaylist(pid, id) },
 		Delete:     func(id int64) error { return deletePlaylist(id) },
 		Unfavorite: func(id int64) error { return unfavoritePlaylist(id) },
+
+		Cache:            func() *player.Cache { return a.pl.Cache },
+		Invalidate:       a.invalidatePlaylist,
+		MarkSynced:       a.markPlaylistSynced,
+		PutPlaylist:      a.putPlaylist,
+		SavePlaylist:     a.savePlaylistCache,
+		SaveUserPlaylists: a.saveUserPlaylistsCache,
 	}
 }
 

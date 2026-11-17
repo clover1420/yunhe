@@ -145,11 +145,11 @@ func TestLyricsResumeBeforeNextLineTimer(t *testing.T) {
 				tt.Frame()
 			}
 			a.resumeMainWindow()
-			if requests != 1 || a.lyricAt != 6 || !tt.HasText("3:10") || tt.Now() != before {
+			if requests != 1 || !tt.HasText("3:10") || tt.Now() != before {
 				t.Fatalf("resume waited for a timer: requests=%d line=%d clock=%v", requests, a.lyricAt, tt.Texts())
 			}
 			tt.Advance(2 * time.Second)
-			if a.lyricScroll.Y <= 0 {
+			if a.lyricAt != 6 || a.lyricScroll.Y <= 0 {
 				t.Fatal("resumed lyrics did not scroll to the current line")
 			}
 			if r, ok := tt.Find("第6句歌词"); !ok || r.Y < 0 || r.Y+r.H > 500 {
@@ -157,6 +157,151 @@ func TestLyricsResumeBeforeNextLineTimer(t *testing.T) {
 			}
 			if frames != "" {
 				saveLyricsEntryFrame(t, frames, fmt.Sprintf("lyrics-resume-%t-after.png", reduceMotion), tt)
+			}
+		})
+	}
+}
+
+// Paused audio keeps its clock while the minimized window skips frames.
+func TestPausedLyricsAfterLongMinimize(t *testing.T) {
+	for _, reduceMotion := range []bool{false, true} {
+		t.Run(fmt.Sprintf("reduce-motion=%t", reduceMotion), func(t *testing.T) {
+			a := newTestApp()
+			a.settings = defaultSettings()
+			a.win = &mygo.Window{}
+			a.pl.Cue([]qqmusic.Track{{ID: 7, Duration: 400000}})
+			var lrc string
+			for i := 0; i < 13; i++ {
+				lrc += fmt.Sprintf("[%02d:%02d.00]第%d句歌词\n", i/2, i%2*30, i)
+			}
+			a.pl.SetLyrics(lyrics.Build(lrc, "", ""))
+			a.pl.Seek(390 * time.Second)
+			tt := ui.NewTester(func(c *ui.Context) {
+				ui.Column(c).Fill().Background(ui.RGB(24, 28, 24)).Children(func() { a.lyricsPane(c, a.pl.Current(), 500) })
+			}, 600, 500)
+			tt.SetPreferences(ui.Preferences{ReduceMotion: reduceMotion})
+			tt.Advance(2 * time.Second)
+			if a.lyricAt != 12 || a.lyricScroll.Y <= 0 {
+				t.Fatal("fixture did not follow the paused line")
+			}
+			a.suspendMainWindow()
+			tt.SetWindowHidden(true)
+			tt.Advance(5 * time.Minute)
+			// Reproduce a restored scroll layout reporting the start again,
+			// while the paused audio clock and current lyric stay unchanged.
+			a.lyricScroll.Y = 0
+			tt.SetWindowHidden(false)
+			oldInvalidate := invalidateWindow
+			t.Cleanup(func() { invalidateWindow = oldInvalidate })
+			invalidateWindow = func(*mygo.Window) { tt.Frame() }
+			a.resumeMainWindow()
+			tt.Advance(2 * time.Second)
+			if a.pl.Playing() || a.pl.Position() != 390*time.Second {
+				t.Fatal("window restoration changed paused playback")
+			}
+			if r, ok := tt.Find("第12句歌词"); !ok || r.Y < 0 || r.Y+r.H > 500 || a.lyricBrowse {
+				t.Fatalf("restored lyric is not visible: box=%+v found=%v scroll=%+v line=%d browse=%v", r, ok, a.lyricScroll, a.lyricAt, a.lyricBrowse)
+			}
+			if dir := os.Getenv("NM_FRAMES"); dir != "" {
+				saveLyricsEntryFrame(t, dir, fmt.Sprintf("lyrics-paused-restore-%t.png", reduceMotion), tt)
+			}
+		})
+	}
+}
+
+// Scrolling the lyrics stops them following the line sung; "回到当前" brings
+// it back and follows again, as choosing a line to sing from does.
+func TestLyricsBrowseAndFollowAgain(t *testing.T) {
+	frames := os.Getenv("NM_FRAMES")
+	if frames != "" {
+		if err := os.MkdirAll(frames, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, reduceMotion := range []bool{false, true} {
+		t.Run(fmt.Sprintf("reduce-motion=%t", reduceMotion), func(t *testing.T) {
+			a := newTestApp()
+			a.settings = defaultSettings()
+			a.pl.Cue([]qqmusic.Track{{ID: 7, Duration: 400000}})
+			var lrc string
+			for i := 0; i < 24; i++ {
+				lrc += fmt.Sprintf("[%02d:%02d.00]第%d句歌词\n", i/2, i%2*30, i)
+			}
+			a.pl.SetLyrics(lyrics.Build(lrc, "", ""))
+			a.pl.Hold(time.Second)
+			tt := ui.NewTester(func(c *ui.Context) {
+				ui.Column(c).Size(600, 500).Background(ui.RGB(24, 28, 24)).Children(func() { a.lyricsPane(c, a.pl.Current(), 500) })
+			}, 600, 500)
+			tt.SetPreferences(ui.Preferences{ReduceMotion: reduceMotion})
+			tt.Advance(time.Second)
+			if _, ok := tt.Find("回到当前"); ok || a.lyricBrowse {
+				t.Fatal("following lyrics offered to follow again")
+			}
+
+			tt.Scroll(300, 250, 0, 400)
+			tt.Advance(time.Second)
+			browsed := a.lyricScroll.Y
+			if !a.lyricBrowse || browsed <= 0 {
+				t.Fatalf("scrolling did not leave the line sung: browse=%v y=%v", a.lyricBrowse, browsed)
+			}
+			if _, ok := tt.Find("回到上方的当前歌词"); !ok {
+				t.Fatal("the line sung, scrolled above, is not pointed up to")
+			}
+			// A real manual scroll remains a browsing choice after a long
+			// minimize; restoration must not force the active line back.
+			a.win = &mygo.Window{}
+			a.suspendMainWindow()
+			tt.SetWindowHidden(true)
+			tt.Advance(5 * time.Minute)
+			tt.SetWindowHidden(false)
+			oldInvalidate := invalidateWindow
+			t.Cleanup(func() { invalidateWindow = oldInvalidate })
+			invalidateWindow = func(*mygo.Window) { tt.Frame() }
+			a.resumeMainWindow()
+			tt.Advance(2 * time.Second)
+			if !a.lyricBrowse || a.lyricScroll.Y != browsed {
+				t.Fatal("restoration discarded the listener's lyric browsing position")
+			}
+			if frames != "" {
+				saveLyricsEntryFrame(t, frames, fmt.Sprintf("lyrics-browse-up-%t.png", reduceMotion), tt)
+			}
+			// A line further on begins: the lyrics stay where the listener
+			// reads, and the button points down to it.
+			a.pl.Hold(5 * time.Minute)
+			tt.Frame()
+			tt.Advance(2 * time.Second)
+			if a.lyricScroll.Y != browsed || a.lyricAt == 10 {
+				t.Fatalf("browsed lyrics followed the line sung: y=%v (was %v) line=%d", a.lyricScroll.Y, browsed, a.lyricAt)
+			}
+			if frames != "" {
+				saveLyricsEntryFrame(t, frames, fmt.Sprintf("lyrics-browse-down-%t.png", reduceMotion), tt)
+			}
+			if err := tt.Click("回到下方的当前歌词"); err != nil {
+				t.Fatal(err)
+			}
+			tt.Advance(2 * time.Second)
+			if a.lyricBrowse || a.lyricAt != 10 {
+				t.Fatalf("follow again: browse=%v line=%d", a.lyricBrowse, a.lyricAt)
+			}
+			if r, ok := tt.Find("第10句歌词"); !ok || r.Y < 0 || r.Y+r.H > 500 {
+				t.Fatalf("line sung is outside the pane: %+v, found=%v", r, ok)
+			}
+			if _, ok := tt.Find("回到当前"); ok {
+				t.Fatal("button stayed after following again")
+			}
+
+			// Scrolled away again, a line clicked is sung from and followed.
+			tt.Scroll(300, 250, 0, -200)
+			tt.Advance(time.Second)
+			if !a.lyricBrowse {
+				t.Fatal("scrolling back did not leave the line sung")
+			}
+			if err := tt.Click("第8句歌词"); err != nil {
+				t.Fatal(err)
+			}
+			tt.Advance(2 * time.Second)
+			if a.lyricBrowse || a.lyricAt != 8 || a.pl.Position() != 4*time.Minute {
+				t.Fatalf("clicked line: browse=%v line=%d position=%v", a.lyricBrowse, a.lyricAt, a.pl.Position())
 			}
 		})
 	}
