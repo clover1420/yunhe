@@ -34,9 +34,9 @@ func (a *app) npTabs() []npTab {
 		if a.captionsShown() {
 			tabs = append(tabs, npTab{paneCaptions, "字幕"})
 		}
-		return append(tabs, npTab{paneQueue, "待播清单"}, npTab{paneComments, "评论"})
+		return append(tabs, npTab{paneQueue, "播放列表"}, npTab{paneComments, "评论"})
 	}
-	return []npTab{{paneLyrics, "歌词"}, {paneStage, "律动"}, {paneQueue, "待播清单"}, {paneWall, "选歌"}, {paneComments, "评论"}}
+	return []npTab{{paneLyrics, "歌词"}, {paneStage, "律动"}, {paneQueue, "播放列表"}, {paneWall, "选歌"}, {paneComments, "评论"}}
 }
 
 func (a *app) paneTabs(c *ui.Context) {

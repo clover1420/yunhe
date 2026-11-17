@@ -97,6 +97,7 @@ type Deps struct {
 	SongMenu    func(*ui.Context, *qqmusic.Track, float32, ui.Color, ...appui.ButtonSurface) ui.Element
 	Cover       func(*ui.Context, string, int, float32, float32) ui.Element
 	SongItems   func(*qqmusic.Track, int64) func(*ui.Menu)
+	QueueSongItems func(*qqmusic.Track, int) func(*ui.Menu)
 	Avatar      func(*ui.Context, string, float32, ui.Color)
 
 	Quiet         *QuietState
@@ -462,7 +463,7 @@ func Reveal(e ui.Element, shown bool) ui.Element {
 	return e.AnimatePose(pose, ui.Animation{Duration: 200 * time.Millisecond})
 }
 
-// qualityBadge marks a lossless stream, as it plays.
+// qualityBadge marks a lossless stream subtly so it blends with the cover backdrop.
 func qualityBadge(c *ui.Context, st *qqmusic.Stream) {
 	if st == nil || !qqmusic.Lossless(st.Level) {
 		return
@@ -471,6 +472,6 @@ func qualityBadge(c *ui.Context, st *qqmusic.Stream) {
 	if st.Level == "hires" {
 		label = "Hi-Res"
 	}
-	ui.Text(c, label).FontSize(9.5).FontWeight(800).LetterSpacing(0.6).TextColor(theme.Warm(true, 11)).
-		Padding(1, 6).Radius(4).Border(1, theme.Warm(true, 8))
+	ui.Text(c, label).FontSize(9.5).FontWeight(600).LetterSpacing(0.6).TextColor(white.Alpha(0.62)).
+		Padding(1, 7).Radius(999).Background(white.Alpha(0.08))
 }

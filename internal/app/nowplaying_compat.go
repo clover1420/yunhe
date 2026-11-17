@@ -133,7 +133,7 @@ func (a *app) queuePane(c *ui.Context) {
 
 func (a *app) queueTracks(c *ui.Context, list *ui.ListState, lastAt *int, p palette) ui.Element {
 	return nowplaying.QueueTracks(c, nowplaying.QueueDeps{
-		Player: a.pl, Cover: a.cover, ArtistLinks: a.artistLinks, SongItems: a.songItems,
+		Player: a.pl, Cover: a.cover, ArtistLinks: a.artistLinks, SongItems: a.songItems, QueueSongItems: a.queueSongItems,
 	}, list, lastAt, p)
 }
 

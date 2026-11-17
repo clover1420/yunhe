@@ -1,4 +1,4 @@
-package app
+﻿package app
 
 import (
 	"fmt"
@@ -37,7 +37,7 @@ func TestPlayerQueuePopoverInteraction(t *testing.T) {
 	route := a.route
 	tt := ui.NewTester(a.view, 1180, 700)
 	for _, dismiss := range []string{"button", "escape", "outside"} {
-		if err := tt.Click("待播清单"); err != nil {
+		if err := tt.Click("播放列表"); err != nil {
 			t.Fatal(err)
 		}
 		tt.Move(10, 10)
@@ -47,7 +47,7 @@ func TestPlayerQueuePopoverInteraction(t *testing.T) {
 		}
 		switch dismiss {
 		case "button":
-			if err := tt.Click("待播清单"); err != nil {
+			if err := tt.Click("播放列表"); err != nil {
 				t.Fatal(err)
 			}
 		case "escape":
@@ -74,7 +74,7 @@ func TestPlayerQueuePopoverPlaysTracks(t *testing.T) {
 			i := order[(at+1)%len(order)]
 			target := a.pl.Queue()[i]
 			tt := ui.NewTester(a.view, 1180, 700)
-			if err := tt.Click("待播清单"); err != nil {
+			if err := tt.Click("播放列表"); err != nil {
 				t.Fatal(err)
 			}
 			if err := tt.Click(target.Name); err != nil {
@@ -103,7 +103,7 @@ func TestPlayerQueuePopoverUnavailableTrack(t *testing.T) {
 	a := queuePopupApp(3)
 	a.pl.Queue()[1].Privilege = &qqmusic.Privilege{St: -1}
 	tt := ui.NewTester(a.view, 1180, 700)
-	if err := tt.Click("待播清单"); err != nil {
+	if err := tt.Click("播放列表"); err != nil {
 		t.Fatal(err)
 	}
 	if err := tt.Click(a.pl.Queue()[1].Name); err != nil {
@@ -119,7 +119,7 @@ func TestPlayerQueuePopoverScroll(t *testing.T) {
 	a := queuePopupApp(60)
 	a.pl.Jump(30)
 	tt := ui.NewTester(a.view, 1180, 700)
-	if err := tt.Click("待播清单"); err != nil {
+	if err := tt.Click("播放列表"); err != nil {
 		t.Fatal(err)
 	}
 	tt.Frame()
@@ -145,7 +145,7 @@ func TestPlayerQueuePopoverScroll(t *testing.T) {
 		t.Fatalf("rebuilding reset queue scroll: %d to %d", scrolled, got)
 	}
 	tt.Key(0, ui.KeyEscape)
-	if err := tt.Click("待播清单"); err != nil {
+	if err := tt.Click("播放列表"); err != nil {
 		t.Fatal(err)
 	}
 	tt.Frame()
@@ -159,7 +159,7 @@ func TestPlayerQueuePopoverScroll(t *testing.T) {
 func TestPlayerQueuePopoverScrollbarGutter(t *testing.T) {
 	a := queuePopupApp(60)
 	tt := ui.NewTester(a.view, 1180, 700)
-	if err := tt.Click("待播清单"); err != nil {
+	if err := tt.Click("播放列表"); err != nil {
 		t.Fatal(err)
 	}
 	row, ok := tt.AccessByRole(ui.RoleButton, a.pl.Current().Name)
@@ -192,7 +192,7 @@ func TestPlayerQueuePopoverShortQueueFits(t *testing.T) {
 		t.Run(fmt.Sprint(n), func(t *testing.T) {
 			a := queuePopupApp(n)
 			tt := ui.NewTester(a.view, 1180, 700)
-			if err := tt.Click("待播清单"); err != nil {
+			if err := tt.Click("播放列表"); err != nil {
 				t.Fatal(err)
 			}
 			row, ok := tt.AccessByRole(ui.RoleButton, a.pl.Current().Name)
@@ -215,7 +215,7 @@ func TestPlayerQueuePopoverNavigation(t *testing.T) {
 	a := queuePopupApp(3)
 	a.artists[2] = &artistData{}
 	tt := ui.NewTester(a.view, 1180, 700)
-	if err := tt.Click("待播清单"); err != nil {
+	if err := tt.Click("播放列表"); err != nil {
 		t.Fatal(err)
 	}
 	r, ok := tt.Find("歌手 02")
@@ -228,7 +228,7 @@ func TestPlayerQueuePopoverNavigation(t *testing.T) {
 	if a.queueOpen || a.route.Page != pageArtist || a.route.ID != 2 {
 		t.Fatalf("artist navigation: queue open=%v, route=%+v", a.queueOpen, a.route)
 	}
-	if err := tt.Click("待播清单"); err != nil {
+	if err := tt.Click("播放列表"); err != nil {
 		t.Fatal(err)
 	}
 	if err := tt.Click("打开正在播放"); err != nil {
@@ -251,7 +251,7 @@ func TestPlayerQueuePopoverNavigation(t *testing.T) {
 func TestPlayerQueuePopoverEmpty(t *testing.T) {
 	a := queuePopupApp(0)
 	tt := ui.NewTester(a.view, 1180, 700)
-	if err := tt.Click("待播清单"); err != nil {
+	if err := tt.Click("播放列表"); err != nil {
 		t.Fatal(err)
 	}
 	if a.queueOpen || a.nowPlaying {
@@ -271,7 +271,7 @@ func TestPlayerQueuePopoverFrames(t *testing.T) {
 				a := queuePopupApp(n)
 				tt := ui.NewTester(a.view, size[0], size[1])
 				tt.SetDark(dark)
-				if err := tt.Click("待播清单"); err != nil {
+				if err := tt.Click("播放列表"); err != nil {
 					t.Fatal(err)
 				}
 				for _, hovered := range []bool{false, true} {

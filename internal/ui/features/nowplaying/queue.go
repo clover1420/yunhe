@@ -14,7 +14,8 @@ type QueueDeps struct {
 	Player      *player.Player
 	Cover       func(*ui.Context, string, int, float32, float32) ui.Element
 	ArtistLinks func(*ui.Context, *qqmusic.Track, ui.Color, ui.Color, ...bool) ui.Element
-	SongItems   func(*qqmusic.Track, int64) func(*ui.Menu)
+	SongItems      func(*qqmusic.Track, int64) func(*ui.Menu)
+	QueueSongItems func(*qqmusic.Track, int) func(*ui.Menu)
 }
 
 // QueuePane lists the whole queue in play order, the track playing marked
@@ -27,7 +28,7 @@ func QueuePane(c *ui.Context, d Deps) {
 }
 
 func queueDeps(d Deps) QueueDeps {
-	return QueueDeps{Player: d.Player, Cover: d.Cover, ArtistLinks: d.ArtistLinks, SongItems: d.SongItems}
+	return QueueDeps{Player: d.Player, Cover: d.Cover, ArtistLinks: d.ArtistLinks, SongItems: d.SongItems, QueueSongItems: d.QueueSongItems}
 }
 
 // QueueTracks shares playback and menus between the page and its floating queue.
@@ -49,8 +50,12 @@ func QueueTracks(c *ui.Context, q QueueDeps, list *ui.ListState, lastAt *int, p 
 		i := order[r]
 		tr := &pl.Queue()[i]
 		playing := r == at
+		menu := q.SongItems(tr, 0)
+		if q.QueueSongItems != nil {
+			menu = q.QueueSongItems(tr, i)
+		}
 		row := ui.ButtonBase(c.Key(i)).Height(58).PaddingX(10).Gap(14).Radius(14).AlignItems(ui.Center).FocusRing(false).Label(tr.Name).
-			ContextMenu(q.SongItems(tr, 0))
+			ContextMenu(menu)
 		switch {
 		case playing:
 			row.Background(p.Press)

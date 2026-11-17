@@ -12,12 +12,12 @@ import (
 
 	"lilt/internal/core/settings"
 	"lilt/internal/media/art"
-	"lilt/internal/media/lyrics"
 	"lilt/internal/media/player"
 	"lilt/internal/media/qqmusic"
 	"lilt/internal/ui/base/appui"
 	"lilt/internal/ui/base/theme"
 	"lilt/internal/ui/base/transport"
+	"lilt/internal/ui/features/lyricsui"
 	"lilt/internal/ui/features/playerbar"
 )
 
@@ -451,8 +451,7 @@ func (n *Notch) compact(c *ui.Context, tr *qqmusic.Track, shown float32, showLyr
 		}
 		cov.Children(func() { appui.ArtImage(c, appui.Bitmap(art), s*0.28, in) })
 		if showLyrics {
-			ui.Text(c.Key("compact-lyric"), n.LyricText(c, tr)).Grow(1).MinWidth(0).
-				FontSize(12.5).FontWeight(800).LetterSpacing(-0.4).TextColor(white.Alpha(0.68)).TextAlign(ui.Center).SingleLine()
+			n.Lyric(c.Key("compact-lyric"), tr, ui.Center).Grow(1)
 		} else {
 			ui.Spacer(c)
 		}
@@ -462,26 +461,16 @@ func (n *Notch) compact(c *ui.Context, tr *qqmusic.Track, shown float32, showLyr
 	})
 }
 
-// LyricText uses the same timeline as Now Playing, waking this window at
-// the next line even when the main window is hidden. Pausing needs no timer.
-func (n *Notch) LyricText(c *ui.Context, tr *qqmusic.Track) string {
-	pl := n.Deps.Player
-	lines, loaded := pl.Lyrics()
-	if !loaded {
-		return "歌词加载中…"
+// Lyric draws the line sung, with its words lit as they are sung. It shares
+// the player's real word times and retained text between the compact and
+// expanded notch, and wakes this window at the next line even when the main
+// window is hidden. Pausing needs no timer.
+func (n *Notch) Lyric(c *ui.Context, tr *qqmusic.Track, align ui.Align) ui.Element {
+	family := n.Deps.Settings.LyricsFont
+	if family == "" {
+		family = c.Theme().Font
 	}
-	if len(lines) == 0 {
-		return "暂无歌词"
-	}
-	pos := pl.Position()
-	cur := lyrics.Index(lines, pos)
-	if pl.Playing() && cur+1 < len(lines) {
-		c.After(lines[cur+1].At - pos + 20*time.Millisecond)
-	}
-	if cur < 0 {
-		return tr.Name
-	}
-	return lines[cur].Text
+	return lyricsui.NotchLyric(c, n.Deps.Player, family, tr, align)
 }
 
 // levels draws the music's levels in the cover's color.
@@ -531,8 +520,7 @@ func (n *Notch) expanded(c *ui.Context, tr *qqmusic.Track, open, left float32) {
 				} else if pl.Loading() {
 					ui.Text(c, "正在缓冲…").FontSize(12.5).TextColor(white.Alpha(0.55)).SingleLine()
 				} else {
-					ui.Text(c.Key("expanded-lyric"), n.LyricText(c, tr)).MinWidth(0).
-						FontSize(12.5).FontWeight(800).LetterSpacing(-0.4).TextColor(white.Alpha(0.7)).SingleLine()
+					n.Lyric(c.Key("expanded-lyric"), tr, ui.Start).FillWidth()
 				}
 			})
 			d.Like(c.Key("like"), tr, 17, white.Alpha(0.6))
