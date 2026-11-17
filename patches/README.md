@@ -1,25 +1,29 @@
 # MyGo 本地补丁
 
-当前依赖为 [MyGo v0.8.3](https://github.com/egoist/mygo/releases/tag/v0.8.3)。
+当前依赖为 [MyGo v0.9.2](https://github.com/egoist/mygo/releases/tag/v0.9.2)。
 以下补丁均已应用到受 Git 跟踪的 `vendor/github.com/egoist/mygo`，
-路径相对 MyGo 根目录，并以干净的 v0.8.3 为基准生成。
+路径相对 MyGo 根目录，并以干净的 v0.9.2 为基准生成。
 
 | 补丁 | 用途 |
 | --- | --- |
-| `mygo-v0.8.3-radix-color-swatches.patch` | ColorPicker / ColorWell 内置色块使用 Radix Colors 第 9 阶与黑色端点，保留自选色及透明度。 |
-| `mygo-v0.8.3-linux-layer-drag.patch` | Wayland layer-shell 歌词面板通过更新锚点拖动；读取 xdg-output 逻辑边界，修复 KDE 分数缩放下无法拖到底边的问题，并通知位置保存。 |
-| `mygo-v0.8.3-macos-dev-icon.patch` | 开发包优先选择 `macos.icon` 的 `-dev` 兄弟文件，正确读取和缓存 ICNS，并监听文件或资产目录变化。 |
-| `mygo-v0.8.3-windows-state-compat.patch` | 将旧版本地补丁保存的 `windowsBounds` 读入上游 `pixel*` 字段；已有 `pixel*` 优先，下次保存使用上游格式。 |
-| `mygo-v0.8.3-tester-label-target.patch` | Tester 点击同名目标时逐个验证实际命中，避免 RichText 父文本误挡内联链接；仍拒绝被遮挡的目标。 |
-| `mygo-v0.8.3-desktop-audio.patch` | 保留桌面原采样率输出、可选设备预热、自然尾音排空及停止后端重开、ALSA 转换回退、切频时隔离已暂停旧曲淡出并在旧输出平滑收尾、正常退出时遵循播放淡入淡出设置的终止性 Shutdown，以及 WSOLA 按输出率步进的修复与回归。 |
-| `mygo-v0.8.3-analytic-clip.patch` | 将可化简的静止几何裁剪直接交给 GPU，包含完整切除圆角的分数滚动边界及不透明冗余裁剪；重叠抗锯齿、变换及图片/渐变遮罩保留像素路径。 |
-| `mygo-v0.8.3-render-resource-lifetime.patch` | 在预算压力下跨开关复用闲置遮罩，固定坐标裁剪保留可复用尺寸；D3D11 / GL / Metal 在完成绘制或提交后清理退场的临时遮罩纹理及离屏层。 |
+| `mygo-v0.9.2-radix-color-swatches.patch` | ColorPicker / ColorWell 内置色块使用 Radix Colors 第 9 阶与黑色端点，保留自选色及透明度。 |
+| `mygo-v0.9.2-linux-layer-drag.patch` | 沿用上游 layer-shell 移动和缩放，保留面板边界约束与 xdg-output 逻辑坐标，修复 KDE 分数缩放下的底边定位与恢复。 |
+| `mygo-v0.9.2-macos-dev-icon.patch` | 开发包优先选择 `macos.icon` 的 `-dev` 兄弟文件，正确读取和缓存 ICNS，并监听文件或资产目录变化。 |
+| `mygo-v0.9.2-windows-state-compat.patch` | 将旧版本地补丁保存的 `windowsBounds` 读入上游 `pixel*` 字段；已有 `pixel*` 优先，下次保存使用上游格式。 |
+| `mygo-v0.9.2-desktop-audio.patch` | 在上游新版重采样与输出实现上保留原采样率、可选预热、尾音排空及重开、ALSA 回退、暂停旧曲隔离、终止性 Shutdown 和 WSOLA 输出率步进。 |
+| `mygo-v0.9.2-render-resource-lifetime.patch` | 在预算压力下跨开关复用闲置遮罩，固定坐标裁剪保留可复用尺寸；D3D11 / GL / Metal 清理退场的临时纹理及离屏层，保留新版视频处理。 |
+| `mygo-v0.9.2-retained-text-colors.patch` | 为保留的 TextLayout 缓存原绘制元数据并增加逐 span 前景色覆盖，外部歌词逐字淡入及重复描边时复用整行 shaping 与静态绘制信息。 |
+| `mygo-v0.9.2-glyph-color-damage.patch` | 字形几何与 atlas 不变时，将单纯前景色变化的重绘区域细化到变化字形；保留原场景、字形顺序与绘制效果。 |
+
+v0.9.2 已包含上游 Tester 同名内联链接目标修复（#1488）和解析裁剪优化（#1489），
+因此移除 `tester-label-target`、`analytic-clip` 两份本地补丁。新版按后端能力处理
+连续圆角：Metal 支持解析，其他后端继续使用遮罩。位图解码复用提案（PR #39）经评估已关闭/不采纳，不纳入本地补丁。
 
 重新生成 vendor 后，在项目根目录应用全部补丁：
 
 ```powershell
 go mod vendor
-Get-ChildItem patches/mygo-v0.8.3-*.patch | ForEach-Object {
+Get-ChildItem patches/mygo-v0.9.2-*.patch | ForEach-Object {
     git apply --check --directory=vendor/github.com/egoist/mygo $_.FullName
     if ($LASTEXITCODE -ne 0) { throw "补丁检查失败：$($_.Name)" }
     git apply --directory=vendor/github.com/egoist/mygo $_.FullName
@@ -29,6 +33,20 @@ Get-ChildItem patches/mygo-v0.8.3-*.patch | ForEach-Object {
 
 已应用时，将 `git apply --check` 改为 `git apply --reverse --check` 验证。
 升级依赖后需先检查上游是否已包含对应修复，再重新生成或移除补丁。
+
+## v0.9.2 升级验证
+
+- `go tool mygo migrate-ui -write ./internal` 和 `./cmd` 均未产生语义变更；已恢复无关行尾变化。
+- 8 份补丁在干净 v0.9.2 源码上逐份检查、应用，49 个文件与 vendor 一致（忽略 CRLF/LF）；全部反向检查通过，vendor 无未归档本地差异。
+- `CGO_ENABLED=0 go test ./...`、`go tool mygo vet .` 通过。
+- 本地 audio、GPU / scene / D3D11、保留文本着色、旧窗口格式及 macOS 图标回归均连续 5 次通过。
+- 应用播放页、快捷键、取消拖动和桌面歌词回归连续 5 次通过；固定模块的上游 Tester 内联链接回归连续 5 次通过，上游 GPU 全包通过。
+- 新版 `TestDownsample*` 在隔离输出的本地音频副本上连续 5 次通过，覆盖混叠抑制、通带/阻带、跨块、变速及零分配。
+- Windows amd64、Linux amd64、macOS arm64 应用构建通过；Linux amd64/arm64 layer 测试、Linux amd64/macOS arm64 audio 测试交叉编译通过。
+
+本轮 Windows D3D11 有原生像素测试；Linux / macOS 未做真机音频或 GUI 验收，
+未运行竞态检测。未生成安装器，未提交、推送或发布。验证产物在忽略目录
+`build/mygo-v0.9.2-upgrade/`。
 
 ## Windows 混合 DPI 窗口恢复
 
@@ -46,7 +64,7 @@ $env:CGO_ENABLED = "0"
 go test ./...
 go tool mygo vet .
 go test github.com/egoist/mygo -run TestWindowStateLegacyPixels
-go test github.com/egoist/mygo/ui -run TestTesterClicksInlineLinkWithParagraphLabel -count=5
+go test -mod=mod github.com/egoist/mygo/ui -run TestTesterClicksInlineLinkWithParagraphLabel -count=5
 go test github.com/egoist/mygo/cmd/mygo -run 'Test(DevConfigMacOSIcon|DevSessionMacOSICNS|BuildInputsMacOSIcon)$' -count=5
 go test github.com/egoist/mygo/audio -count=5
 go run ./scripts/check-window-state -cycles 20
@@ -84,6 +102,10 @@ Linux 歌词锁定直接调用 MyGo v0.8.3 的 `Window.SetIgnoreMouseEvents`，
 `restored-locked` 和 `bottom-edge` 阶段。
 
 ## 播放页裁剪内存
+
+下文性能数字与验收记录来自 v0.8.3 时的历史实验，不是 v0.9.2 的测量结果。
+解析裁剪现使用 v0.9.2 上游实现；历史命令中对应本地测试已随补丁移除，
+可在固定 v0.9.2 模块中运行上游 GPU 回归。本地仍维护资源生命周期、文本着色和字形脏区补丁。
 
 v0.8.3 已包含上游的[增长遮罩复用](https://github.com/egoist/mygo/pull/1428)、
 [容量预算修复](https://github.com/egoist/mygo/pull/1408)和
@@ -189,3 +211,61 @@ go test github.com/egoist/mygo/internal/gpu/d3d11 -count=5
 全套测试、上游闲置预算及透视卡片回归、三个桌面平台构建均通过。
 八份补丁在干净上游文件上逐份重应用，43 个受影响文件与当前 vendor 一致。
 GL / Metal 真机 GPU 尚未验收。
+
+## 外部歌词保留文本着色
+
+`Painter.TextLayoutColors(layout, x, y, color, colors)` 使用原有整行布局，只替换
+各 span 的前景色。颜色不参与 MyGo 的 shaping 样式，因此保持原 span 边界即可
+复用字体回退、连字、双向文字、字形位置与换行。背景、描边、阴影与装饰沿用
+原布局；原布局及 span 不被修改。缺少的颜色保留原值，多余颜色忽略，
+显式零透明度覆盖会完全透明。
+
+构造布局时一次生成 shaping 与绘制共用的 span 样式；普通 `TextLayout` 绘制直接
+复用原绘制元数据，保留无颜色或装饰时的 nil 快速路径，避免重复描边时反复
+扫描文字、编码 span 样式。颜色覆盖路径不重建文本、UTF-16 索引或字素边界，
+也不触发 shaping；每次着色仍复制一次 span 切片。
+
+像素回归对比重新 shaping 后的原绘制路径，覆盖连字、混合
+双向文字、中文、ZWJ emoji、组合字符、换行、透明度、阴影、描边及文字装饰，
+并检查布局计数不增加、原布局未改变。普通绘制另与原
+`p.textLayout(..., newSpanPaint(layout.spans))` 路径逐像素对比，覆盖无 span、
+仅几何样式、透明与带装饰的文字，并确认 nil 快速路径一致。
+
+```powershell
+go test github.com/egoist/mygo/ui -run 'TestTextLayout(RetainedPaint|Colors)' -count=5
+```
+
+该回归连续 5 次通过。九份补丁在干净 v0.8.3 副本上逐份重应用，
+53 个受影响文件与当前 vendor 一致（忽略 CRLF/LF 差异）。
+应用侧另有 54 张软件截图与修改前完全一致，Windows 原生离线 CPU 采样已完成；
+短时总 CPU 读数波动较大，不能用布局基准的加速比推算整机降幅。
+macOS 真机 CPU 与原生 GPU 逐像素对照尚未验收。
+
+## 字形颜色的局部重绘
+
+整行文字原先作为一个 `OpGlyphs` 比较，逐词亮度变化会使整个句子的边界
+进入脏区，连带重绘其后的同区域静态描边。新增细化仅接受相同的 op 字段、
+裁剪后总边界、字形数量与全部字形几何，且两个 atlas 均没有更新的帧；
+只允许字形 `Color` / `Wide` 的语义颜色变化。任何其它变化继续使用整 op
+脏区，下游已有的 GPU pipeline 变化检查也继续保留。
+
+局部边界包含变化字形的 atlas bitmap 尺寸、op 与 glyph 变换以及原有
+抗锯齿 Reach；多个词同时变化会累计所有变化字形。保持原 scene、字形
+绘制次序、描边、阴影、亮度、动画和帧率，只缩小清除、绘制与呈现区域。
+此路径不会缓存新的位图，也不会缩减 D3D 每帧的全部实例构建与上传。
+
+共享回归覆盖透明度、多词变化、bitmap 尺寸、变换、裁剪、atlas 更新、
+结构变化回退与宽色域。D3D 原生回归将局部更新结果与整帧重新绘制逐像素
+对照，并对局部 dirty area 设置上限，旧实现无法通过该面积回归。
+测试命令：
+
+```powershell
+go test github.com/egoist/mygo/internal/scene -run TestGlyphColorDamage -count=5
+go test github.com/egoist/mygo/internal/gpu/d3d11 -run TestGlyphColorPartialRedrawMatchesFull -count=5
+```
+
+本补丁的共享与原生像素回归均连续 5 次通过；本机真实播放原生插桩中
+累计重绘面积约降 78%，帧数基本一致。版本顺序反转后的无插桩 CPU 对照
+未证明稳定下降，不能从脏区面积的下降直接推算 CPU 降幅。
+新补丁在已应用前九份补丁的干净 v0.8.3 副本上检查并应用成功，十份补丁
+涉及的 56 个文件与当前 vendor 一致（忽略 CRLF/LF），反向检查通过。
