@@ -14,20 +14,21 @@ import (
 // Only the taskbar monitor works off-thread. Window and player state stay on main.
 type Taskbar struct {
 	Deps
-	Win          *mygo.Window
-	CoverWin     *mygo.Window
-	Controls     *mygo.Window
-	ControlsOpen bool
-	CoverReady   bool
-	Scrub        transport.State
-	Stop         func()
-	Placement    Placement
-	Parent       uintptr
-	Revision     uint64
-	Ready        bool
-	Visible      bool
-	Dark         bool
-	LastError    string
+	translationPolicy lyricTranslationPolicy
+	Win               *mygo.Window
+	CoverWin          *mygo.Window
+	Controls          *mygo.Window
+	ControlsOpen      bool
+	CoverReady        bool
+	Scrub             transport.State
+	Stop              func()
+	Placement         Placement
+	Parent            uintptr
+	Revision          uint64
+	Ready             bool
+	Visible           bool
+	Dark              bool
+	LastError         string
 }
 
 // SupportsTaskbarLyrics reports whether the platform has taskbar lyrics.

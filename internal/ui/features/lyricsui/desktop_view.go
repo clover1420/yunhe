@@ -16,16 +16,26 @@ import (
 
 const DesktopToolbarHeight float32 = 44
 const DesktopFade = 240 * time.Millisecond
+const desktopLyricRowFade = 160 * time.Millisecond
 const DesktopRestAlpha float32 = 0.478
 const DesktopSungAlpha float32 = 0.95
 
 // desktopLyricContent is a snapshot of the player's timeline, never a second clock.
 type desktopLyricContent struct {
 	line              lyrics.Line
+	secondaryLine     lyrics.Line
 	preview           string
 	index             int
+	activeRow         int
 	text, translation string
 	next              time.Duration
+}
+
+func (c desktopLyricContent) pairStart() int {
+	if c.index < 0 {
+		return c.index
+	}
+	return c.index - c.activeRow
 }
 
 // desktopLyricAt keeps the current line through instrumental gaps until its successor starts.
@@ -51,11 +61,31 @@ func lyricAt(lines []lyrics.Line, loaded bool, position time.Duration, doubleLin
 		return out
 	}
 	line := lines[index]
-	out.line, out.index, out.text = line, index, line.Text
+	out.index = index
 	if translation {
-		out.translation = line.Translation
-	} else if doubleLine && index+1 < len(lines) {
-		out.preview = lines[index+1].Text
+		out.line, out.text, out.translation = line, line.Text, line.Translation
+	} else if doubleLine {
+		firstSung := 0
+		for firstSung < len(lines) && lyrics.IsCredit(lines[firstSung].Text) {
+			firstSung++
+		}
+		if index < firstSung {
+			out.line, out.text = line, line.Text
+			if index+1 < firstSung {
+				out.secondaryLine = lines[index+1]
+				out.preview = lines[index+1].Text
+			}
+		} else {
+			offset := index - firstSung
+			base := firstSung + offset - offset%2
+			out.line, out.activeRow, out.text = lines[base], offset%2, lines[base].Text
+			if base+1 < len(lines) {
+				out.secondaryLine = lines[base+1]
+				out.preview = lines[base+1].Text
+			}
+		}
+	} else {
+		out.line, out.text = line, line.Text
 	}
 	if desktopLyricComparable(out.translation) == desktopLyricComparable(out.text) {
 		out.translation = ""
@@ -94,10 +124,14 @@ func DesktopTranslation(lines []lyrics.Line) bool {
 // desktopLyricWake waits through genuine word gaps instead of keeping a 25 Hz loop.
 func desktopLyricWake(content desktopLyricContent, position time.Duration) time.Duration {
 	next := content.next
-	if content.index < 0 || !content.line.Timed {
+	active := content.line
+	if content.activeRow == 1 {
+		active = content.secondaryLine
+	}
+	if content.index < 0 || !active.Timed {
 		return next
 	}
-	for _, word := range content.line.Words {
+	for _, word := range active.Words {
 		delay := time.Duration(0)
 		if position < word.Start {
 			delay = word.Start - position
@@ -112,13 +146,14 @@ func desktopLyricWake(content desktopLyricContent, position time.Duration) time.
 }
 
 type desktopLyricViewState struct {
-	track             int64
-	mid               string
-	revision          uint64
-	current, previous desktopLyricContent
-	changed, seen     time.Time
-	position          time.Duration
-	initialized       bool
+	track                 int64
+	mid                   string
+	revision              uint64
+	current, previous     desktopLyricContent
+	changed, rowChanged   time.Time
+	seen                  time.Time
+	position              time.Duration
+	initialized           bool
 }
 
 type desktopLyricBlend struct {
@@ -150,6 +185,19 @@ func (s *desktopLyricViewState) blend(c *ui.Context) desktopLyricBlend {
 		currentY: 4 * (1 - in), previousY: -2 * (1 - out)}
 }
 
+func (s *desktopLyricViewState) rowReveal(c *ui.Context, activeRow int, timed bool) float32 {
+	if activeRow == 0 || timed || s.rowChanged.IsZero() {
+		return 1
+	}
+	elapsed := max(0, c.Now().Sub(s.rowChanged))
+	if elapsed >= desktopLyricRowFade {
+		return 1
+	}
+	c.After(min(time.Second/60, desktopLyricRowFade-elapsed))
+	p := float32(elapsed) / float32(desktopLyricRowFade)
+	return 1 - (1-p)*(1-p)
+}
+
 func (s *desktopLyricViewState) step(track int64, mid string, revision uint64, content desktopLyricContent, position time.Duration, now time.Time, playing, reduced bool) {
 	changed := !s.initialized || s.track != track || s.mid != mid || s.revision != revision
 	jump := position < s.position
@@ -159,14 +207,20 @@ func (s *desktopLyricViewState) step(track int64, mid string, revision uint64, c
 	} else if s.initialized && position != s.position {
 		jump = true
 	}
-	different := content.index != s.current.index || content.text != s.current.text || content.translation != s.current.translation || content.preview != s.current.preview
+	different := content.pairStart() != s.current.pairStart() || content.text != s.current.text || content.translation != s.current.translation || content.preview != s.current.preview
+	rowSwitched := !different && content.activeRow != s.current.activeRow
 	if changed || jump || reduced {
-		s.previous, s.changed = desktopLyricContent{}, time.Time{}
+		s.previous, s.changed, s.rowChanged = desktopLyricContent{}, time.Time{}, time.Time{}
 	} else if different {
-		s.previous, s.changed = s.current, now
+		s.previous, s.changed, s.rowChanged = s.current, now, time.Time{}
+	} else if rowSwitched {
+		s.rowChanged = now
 	}
 	if !s.changed.IsZero() && now.Sub(s.changed) >= DesktopFade {
 		s.previous, s.changed = desktopLyricContent{}, time.Time{}
+	}
+	if !s.rowChanged.IsZero() && now.Sub(s.rowChanged) >= desktopLyricRowFade {
+		s.rowChanged = time.Time{}
 	}
 	s.track, s.mid, s.current, s.position, s.seen, s.initialized = track, mid, content, position, now, true
 	s.revision = revision
@@ -196,15 +250,20 @@ func (d *Desktop) View(c *ui.Context) {
 	if tr := d.Player.Current(); tr != nil {
 		track, mid = tr.ID, tr.MID
 		lines, loaded := d.Player.Lyrics()
-		content = desktopLyricAt(lines, loaded, d.Player.Position(), d.Settings.DesktopLyricsDoubleLine)
+		content = lyricAt(lines, loaded, d.Player.Position(), d.Settings.DesktopLyricsDoubleLine, d.translationPolicy.get(lines, DesktopTranslation))
 	}
 	position := d.Player.Position()
 	playing := d.Player.Playing()
 	state.step(track, mid, d.Revision, content, position, c.Now(), playing, c.Preferences().ReduceMotion)
 	blend := state.blend(c)
+	reveal := state.rowReveal(c, content.activeRow, content.secondaryLine.Timed)
 	color := DesktopLyricsColor(d.Settings.DesktopLyricsColor)
-	current := DesktopLayouts(c, content, position, size, textWidth, color)
-	previous := DesktopLayouts(c, state.previous, position, size, textWidth, color)
+	family := d.Settings.LyricsFont
+	if family == "" {
+		family = c.Theme().Font
+	}
+	current := desktopLyricsLayoutsWithFont(c, content, position, size, textWidth, color, reveal, family)
+	previous := desktopLyricsLayoutsWithFont(c, state.previous, position, size, textWidth, color, 1, family)
 	height := max(current.height, previous.height)
 	d.FitHeight(float64(DesktopToolbarHeight + height + 28))
 	// Use the committed viewport until the deferred native resize completes.
@@ -303,29 +362,40 @@ type desktopLyricLayouts struct {
 	previewOutline, preview                        *ui.TextLayout
 	originalHeight, height                         float32
 	opacity                                        float32
+	previewColor                                   ui.Color
+	wordColors, previewWordColors                  []ui.Color
 }
 
 func DesktopLayouts(c *ui.Context, content desktopLyricContent, position time.Duration, size, width float32, color ui.Color) desktopLyricLayouts {
+	return desktopLyricsLayoutsAt(c, content, position, size, width, color, 1)
+}
+
+func desktopLyricsLayoutsAt(c *ui.Context, content desktopLyricContent, position time.Duration, size, width float32, color ui.Color, rowReveal float32) desktopLyricLayouts {
+	return desktopLyricsLayoutsWithFont(c, content, position, size, width, color, rowReveal, c.Theme().Font)
+}
+
+func desktopLyricsLayoutsWithFont(c *ui.Context, content desktopLyricContent, position time.Duration, size, width float32, color ui.Color, rowReveal float32, family string) desktopLyricLayouts {
 	if content.text == "" {
 		return desktopLyricLayouts{}
 	}
-	font := ui.Font{Family: c.Theme().Font, Size: size, Weight: 700, LineHeight: 1.3}
+	font := ui.Font{Family: family, Size: size, Weight: 700, LineHeight: 1.3}
 	shape := ui.TextShape{Width: width, Align: ui.Center}
 	text := content.text
 	// Rich-text spans use zero alpha to mean inherited color. Apply the
 	// user's opacity to the complete layer, including its outline, instead.
 	opacity := float32(color.A) / 255
 	color = ui.RGB(color.R, color.G, color.B)
-	var spans []ui.Span
-	if content.line.Timed && len(content.line.Words) > 0 {
-		spans = make([]ui.Span, 0, len(content.line.Words))
-		for _, word := range content.line.Words {
-			spans = append(spans, ui.Span{Text: word.Text, Color: desktopLyricWordColor(color, word.Progress(position))})
-		}
-	}
 	layout := desktopLyricLayouts{outline: retainedLyricText(c, text, font, shape, ui.Color{}), opacity: opacity}
 	if content.line.Timed && len(content.line.Words) > 0 {
-		layout.text = ui.ShapeRichTextWith(spans, font, shape)
+		layout.text = retainedLyricWords(c, content.line.Words, font, shape, false).layout
+		layout.wordColors = make([]ui.Color, len(content.line.Words))
+		for i, word := range content.line.Words {
+			progress := float32(1)
+			if content.activeRow == 0 {
+				progress = word.Progress(position)
+			}
+			layout.wordColors[i] = desktopLyricWordColor(color, progress)
+		}
 	} else {
 		layout.text = retainedLyricText(c, text, font, shape, desktopLyricWordColor(color, 1))
 	}
@@ -339,7 +409,29 @@ func DesktopLayouts(c *ui.Context, content desktopLyricContent, position time.Du
 		layout.height += h + 6
 	} else if content.preview != "" {
 		layout.previewOutline = retainedLyricText(c, content.preview, font, shape, ui.Color{})
-		layout.preview = retainedLyricText(c, content.preview, font, shape, desktopLyricWordColor(color, 0))
+		if content.secondaryLine.Timed && len(content.secondaryLine.Words) > 0 {
+			layout.preview = retainedLyricWords(c, content.secondaryLine.Words, font, shape, false).layout
+			layout.previewWordColors = make([]ui.Color, len(content.secondaryLine.Words))
+			for i, word := range content.secondaryLine.Words {
+				progress := float32(0)
+				if content.activeRow == 1 {
+					progress = word.Progress(position)
+				}
+				layout.previewWordColors[i] = desktopLyricWordColor(color, progress)
+			}
+		} else {
+			progress := float32(0)
+			if content.activeRow == 1 {
+				progress = rowReveal
+			}
+			layout.previewColor = desktopLyricWordColor(color, progress)
+			if progress > 0 && progress < 1 {
+				// Avoid reshaping intermediate colors during the brief untimed row reveal.
+				layout.preview = layout.previewOutline
+			} else {
+				layout.preview = retainedLyricText(c, content.preview, font, shape, layout.previewColor)
+			}
+		}
 		_, h := layout.preview.Size()
 		layout.height += h + 6
 	}
@@ -350,7 +442,7 @@ func (layout desktopLyricLayouts) draw(p *ui.Painter, r ui.Rect, alpha float32) 
 	if layout.text == nil || alpha <= 0 {
 		return
 	}
-	draw := func(outline, text *ui.TextLayout, y float32, color ui.Color) {
+	draw := func(outline, text *ui.TextLayout, y float32, color ui.Color, colors []ui.Color) {
 		if text == nil {
 			return
 		}
@@ -359,9 +451,13 @@ func (layout desktopLyricLayouts) draw(p *ui.Painter, r ui.Rect, alpha float32) 
 			angle := float64(i) * math.Pi / 4
 			p.TextLayout(outline, r.X+float32(math.Cos(angle))*0.8, y+float32(math.Sin(angle))*0.8, theme.Shade(12).Alpha(0.95*alpha))
 		}
-		p.TextLayout(text, r.X, y, color)
+		p.TextLayoutColors(text, r.X, y, color, colors)
 	}
-	draw(layout.outline, layout.text, r.Y, theme.Veil(12))
-	draw(layout.translationOutline, layout.translation, r.Y+layout.originalHeight+6, theme.Neutral(true, 12))
-	draw(layout.previewOutline, layout.preview, r.Y+layout.originalHeight+6, theme.Veil(12))
+	draw(layout.outline, layout.text, r.Y, theme.Veil(12), layout.wordColors)
+	draw(layout.translationOutline, layout.translation, r.Y+layout.originalHeight+6, theme.Neutral(true, 12), nil)
+	previewColor := layout.previewColor
+	if previewColor == (ui.Color{}) {
+		previewColor = theme.Veil(12)
+	}
+	draw(layout.previewOutline, layout.preview, r.Y+layout.originalHeight+6, previewColor, layout.previewWordColors)
 }

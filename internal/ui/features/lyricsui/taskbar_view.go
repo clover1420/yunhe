@@ -4,7 +4,6 @@ import (
 	"strings"
 	"time"
 	"unicode"
-	"unicode/utf16"
 
 	"github.com/egoist/mygo/ui"
 	"lilt/internal/media/art"
@@ -38,10 +37,23 @@ func (d *Taskbar) View(c *ui.Context) {
 	playing := d.Player.Playing()
 	state.step(track.ID, track.MID, d.Revision, content, position, c.Now(), playing, c.Preferences().ReduceMotion || !playing)
 	var scrolling bool
+	family := d.Settings.LyricsFont
+	if family == "" {
+		family = c.Theme().Font
+	}
 	if content.text != "" && (content.index >= 0 || d.Player.Instrumental()) {
-		layout := MakeLayout(c, content, position, d.Dark, height)
+		reveal := state.rowReveal(c, content.activeRow, content.secondaryLine.Timed)
+		layout := makeTaskbarLyricLayoutWithFont(c, content, position, d.Dark, height, reveal, family)
 		available := max(1, width-left-6)
-		scrolling = (layout.width > available || (!layout.preview && layout.secondaryWidth > available)) && !content.line.Timed && content.line.End > position && position >= content.line.At
+		activeLine := content.line
+		activeWidth := layout.width
+		if content.activeRow == 1 {
+			activeLine = content.secondaryLine
+			activeWidth = layout.secondaryWidth
+		} else if !layout.preview && layout.secondaryWidth > activeWidth {
+			activeWidth = layout.secondaryWidth
+		}
+		scrolling = activeWidth > available && !activeLine.Timed && activeLine.End > position && position >= activeLine.At
 		offset := float32(0)
 		var previous taskbarLyricLayout
 		if !state.changed.IsZero() {
@@ -49,7 +61,7 @@ func (d *Taskbar) View(c *ui.Context) {
 			progress := min(1, float32(elapsed)/float32(DesktopFade))
 			eased := 1 - (1-progress)*(1-progress)*(1-progress)
 			offset = height * (1 - eased)
-			previous = MakeLayout(c, state.previous, position, d.Dark, height)
+			previous = makeTaskbarLyricLayoutWithFont(c, state.previous, position, d.Dark, height, 1, family)
 			c.After(min(time.Second/60, DesktopFade-elapsed))
 		}
 		root.Draw(func(p *ui.Painter, r ui.Rect) {
@@ -61,15 +73,19 @@ func (d *Taskbar) View(c *ui.Context) {
 			}
 			layout.draw(p, viewport, d.Dark, offset)
 		})
-	}
-	if playing {
-		next := desktopLyricWake(content, position)
-		// LRC has no real word times. Scroll an overflowing sentence only while
-		// its own interval plays, then stop; short lines stay entirely idle.
-		if scrolling && (next <= 0 || next > 40*time.Millisecond) {
-			next = min(40*time.Millisecond, content.line.End-position)
+		if playing {
+			next := desktopLyricWake(content, position)
+			// LRC has no real word times. Scroll an overflowing sentence only while
+			// its own interval plays, then stop; short lines stay entirely idle.
+			if scrolling && (next <= 0 || next > 40*time.Millisecond) {
+				next = min(40*time.Millisecond, activeLine.End-position)
+			}
+			if next > 0 {
+				c.After(next)
+			}
 		}
-		if next > 0 {
+	} else if playing {
+		if next := desktopLyricWake(content, position); next > 0 {
 			c.After(next)
 		}
 	}
@@ -138,7 +154,7 @@ func (d *Taskbar) Content(position time.Duration) desktopLyricContent {
 	if loaded && d.Player.Instrumental() {
 		return desktopLyricContent{index: -1, text: "纯音乐，请欣赏"}
 	}
-	return lyricAt(lines, loaded, position, true, TaskbarTranslation(lines))
+	return lyricAt(lines, loaded, position, true, d.translationPolicy.get(lines, TaskbarTranslation))
 }
 
 // Han lyrics without a translation use current/next even when they contain none
@@ -171,78 +187,92 @@ type taskbarLyricLayout struct {
 	text, outline, secondary, secondaryOutline    *ui.TextLayout
 	width, secondaryWidth, height, originalHeight float32
 	progressX, progress                           float32
+	secondaryProgressX, secondaryProgress         float32
+	secondaryAlpha                                float32
 	preview                                       bool
+	activeRow                                     int
+	words, secondaryWords                         *lyricWordGeometry
+	wordColors, secondaryWordColors               []ui.Color
 }
 
 func MakeLayout(c *ui.Context, content desktopLyricContent, position time.Duration, dark bool, height float32) taskbarLyricLayout {
+	return makeTaskbarLyricLayoutAt(c, content, position, dark, height, 1)
+}
+
+func makeTaskbarLyricLayoutAt(c *ui.Context, content desktopLyricContent, position time.Duration, dark bool, height float32, rowReveal float32) taskbarLyricLayout {
+	return makeTaskbarLyricLayoutWithFont(c, content, position, dark, height, rowReveal, c.Theme().Font)
+}
+
+func makeTaskbarLyricLayoutWithFont(c *ui.Context, content desktopLyricContent, position time.Duration, dark bool, height float32, rowReveal float32, family string) taskbarLyricLayout {
 	if content.text == "" {
 		return taskbarLyricLayout{}
 	}
+	layout := retainedTaskbarLyricLayout(c, content, dark, height, family)
+	layout.activeRow = content.activeRow
 	color := theme.Neutral(dark, 12)
-	text := taskbarLyricSingleLine(content.text)
-	secondary := content.translation
-	preview := secondary == "" && content.preview != ""
-	if preview {
-		secondary = content.preview
-	}
-	secondary = taskbarLyricSingleLine(secondary)
-	var spans []ui.Span
-	if content.line.Timed && len(content.line.Words) > 0 {
-		spans = make([]ui.Span, 0, len(content.line.Words))
-		for _, word := range content.line.Words {
-			brightness := DesktopRestAlpha + (DesktopSungAlpha-DesktopRestAlpha)*word.Progress(position)
-			spans = append(spans, ui.Span{Text: taskbarLyricSingleLine(word.Text), Color: color.Alpha(brightness)})
-		}
-	}
-	shape := func(size float32) taskbarLyricLayout {
-		font := ui.Font{Family: c.Theme().Font, Size: size, Weight: 600, LineHeight: 1.15}
-		layout := taskbarLyricLayout{
-			outline: retainedLyricText(c, text, font, ui.TextShape{}, ui.Color{}),
-			preview: preview,
-		}
-		if content.line.Timed && len(content.line.Words) > 0 {
-			layout.text = ui.ShapeRichText(spans, font, 0)
-		} else {
-			layout.text = retainedLyricText(c, text, font, ui.TextShape{}, color)
-		}
-		layout.width, layout.originalHeight = layout.text.Size()
-		layout.height = layout.originalHeight
-		if secondary != "" {
-			layout.secondary = retainedLyricText(c, secondary, font, ui.TextShape{}, ui.Color{})
-			layout.secondaryOutline = layout.secondary
-			var h float32
-			layout.secondaryWidth, h = layout.secondary.Size()
-			layout.height += h + 1
-		}
-		return layout
-	}
-	layout := shape(16)
-	if layout.height > max(1, height-2) {
-		gap := float32(0)
-		if layout.secondary != nil {
-			gap = 1
-		}
-		// Both sentences shrink together on compact taskbars. Never discard a
-		// translation or a Chinese preview just because the taskbar is shorter.
-		layout = shape(max(1, 16*max(1, height-2-gap)/(layout.height-gap)))
-	}
-	if content.line.Timed && len(content.line.Words) > 0 {
-		units := 0
-		for _, word := range content.line.Words {
-			start := units
-			units += len(utf16.Encode([]rune(taskbarLyricSingleLine(word.Text))))
-			if position < word.Start {
-				break
+	if layout.words != nil {
+		layout.wordColors = make([]ui.Color, len(content.line.Words))
+		if content.activeRow == 1 {
+			for i := range content.line.Words {
+				layout.wordColors[i] = color.Alpha(DesktopSungAlpha)
 			}
-			left, right := layout.text.Caret(start).X, layout.text.Caret(units).X
-			layout.progressX = left + (right-left)*word.Progress(position)
+			layout.progress = 1
+			layout.progressX = layout.width
+		} else {
+			for i, word := range content.line.Words {
+				brightness := DesktopRestAlpha + (DesktopSungAlpha-DesktopRestAlpha)*word.Progress(position)
+				layout.wordColors[i] = color.Alpha(brightness)
+			}
+			for i, word := range content.line.Words {
+				if position < word.Start {
+					break
+				}
+				left, right := layout.words.left[i], layout.words.right[i]
+				layout.progressX = left + (right-left)*word.Progress(position)
+			}
+			if layout.width > 0 {
+				layout.progress = min(1, max(0, layout.progressX/layout.width))
+			}
 		}
-		if layout.width > 0 {
-			layout.progress = min(1, max(0, layout.progressX/layout.width))
-		}
+	} else if content.activeRow == 1 {
+		layout.progress = 1
+		layout.progressX = layout.width
 	} else if content.line.End > content.line.At {
 		layout.progress = min(1, max(0, float32(position-content.line.At)/float32(content.line.End-content.line.At)))
 		layout.progressX = layout.width * layout.progress
+	}
+	if layout.preview && layout.secondary != nil {
+		if layout.secondaryWords != nil {
+			layout.secondaryWordColors = make([]ui.Color, len(content.secondaryLine.Words))
+			if content.activeRow == 1 {
+				for i, word := range content.secondaryLine.Words {
+					brightness := DesktopRestAlpha + (DesktopSungAlpha-DesktopRestAlpha)*word.Progress(position)
+					layout.secondaryWordColors[i] = color.Alpha(brightness)
+				}
+				for i, word := range content.secondaryLine.Words {
+					if position < word.Start {
+						break
+					}
+					left, right := layout.secondaryWords.left[i], layout.secondaryWords.right[i]
+					layout.secondaryProgressX = left + (right-left)*word.Progress(position)
+				}
+				if layout.secondaryWidth > 0 {
+					layout.secondaryProgress = min(1, max(0, layout.secondaryProgressX/layout.secondaryWidth))
+				}
+			} else {
+				for i := range content.secondaryLine.Words {
+					layout.secondaryWordColors[i] = color.Alpha(DesktopRestAlpha)
+				}
+			}
+		} else if content.activeRow == 1 {
+			layout.secondaryAlpha = DesktopRestAlpha + (DesktopSungAlpha-DesktopRestAlpha)*rowReveal
+			if content.secondaryLine.End > content.secondaryLine.At {
+				layout.secondaryProgress = min(1, max(0, float32(position-content.secondaryLine.At)/float32(content.secondaryLine.End-content.secondaryLine.At)))
+				layout.secondaryProgressX = layout.secondaryWidth * layout.secondaryProgress
+			}
+		} else {
+			layout.secondaryAlpha = DesktopRestAlpha
+		}
 	}
 	return layout
 }
@@ -272,19 +302,24 @@ func (layout taskbarLyricLayout) draw(p *ui.Painter, r ui.Rect, dark bool, offse
 		for _, offset := range []ui.Point{{X: -0.5}, {X: 0.5}, {Y: -0.5}, {Y: 0.5}} {
 			p.TextLayout(layout.outline, x+offset.X, y+offset.Y, outline)
 		}
-		p.TextLayout(layout.text, x, y, theme.Neutral(dark, 12))
+		p.TextLayoutColors(layout.text, x, y, theme.Neutral(dark, 12), layout.wordColors)
 		if layout.secondary != nil {
-			w, progress := layout.secondaryWidth, layout.progress
+			w, progressX := layout.secondaryWidth, layout.secondaryWidth*layout.progress
 			color := theme.Neutral(dark, 12)
 			if layout.preview {
-				progress, color = 0, color.Alpha(DesktopRestAlpha)
+				progressX = layout.secondaryProgressX
+				alpha := layout.secondaryAlpha
+				if alpha <= 0 {
+					alpha = DesktopRestAlpha
+				}
+				color = color.Alpha(alpha)
 			}
-			x = r.X + taskbarLyricOffset(w, r.W, w*progress)
+			x = r.X + taskbarLyricOffset(w, r.W, progressX)
 			y += layout.originalHeight + 1
 			for _, offset := range []ui.Point{{X: -0.5}, {X: 0.5}, {Y: -0.5}, {Y: 0.5}} {
 				p.TextLayout(layout.secondaryOutline, x+offset.X, y+offset.Y, outline)
 			}
-			p.TextLayout(layout.secondary, x, y, color)
+			p.TextLayoutColors(layout.secondary, x, y, color, layout.secondaryWordColors)
 		}
 	})
 }

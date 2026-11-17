@@ -35,11 +35,12 @@ const DesktopLyricsWidth = 760
 // All its state and callbacks belong to MyGo's main thread.
 type Desktop struct {
 	Deps
-	Win           *mygo.Window
-	OffDisplays   func()
-	Width         float64
-	DesiredHeight int
-	Revision      uint64
+	translationPolicy lyricTranslationPolicy
+	Win               *mygo.Window
+	OffDisplays       func()
+	Width             float64
+	DesiredHeight     int
+	Revision          uint64
 
 	// WorkAreaOverride adjusts a display's work area, when the platform
 	// reports one that covers panels; StopWorkArea stops watching it.

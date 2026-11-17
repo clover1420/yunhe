@@ -4,12 +4,15 @@ import (
 	"math"
 	"time"
 
+	"github.com/egoist/mygo/plugins/glass"
 	"github.com/egoist/mygo/ui"
 
 	"lilt/internal/core/settings"
 	"lilt/internal/media/lyrics"
 	"lilt/internal/media/player"
 	"lilt/internal/media/qqmusic"
+	"lilt/internal/ui/base/appui"
+	"lilt/internal/ui/base/theme"
 )
 
 // lyricWordWake waits through genuine word gaps instead of keeping a 25 Hz loop.
@@ -64,16 +67,20 @@ func LyricsPane(c *ui.Context, d Deps, tr *qqmusic.Track, h float32) {
 	}
 	if *d.LyricTrack != tr.ID {
 		*d.LyricTrack, *d.LyricAt = tr.ID, -2
-		*d.LyricScroll, *d.LyricGlide = ui.ScrollState{}, Glide{}
+		*d.LyricScroll, *d.LyricGlide, *d.LyricBrowse = ui.ScrollState{}, Glide{}, false
 	}
-	lag := d.LyricGlide.Step(c, d.LyricScroll)
+	lag, resumed := lyricStep(c, d)
 	// Redraw as the next line begins, and as the size popover changes it.
 	size := float32(LyricsFontSize(d.Settings))
-	if *d.LyricSize != size {
+	font := d.Settings.LyricsFont
+	if font == "" {
+		font = c.Theme().Font
+	}
+	if *d.LyricSize != size || *d.LyricFont != font {
 		if *d.LyricSize != 0 {
 			*d.LyricSizeAt = c.Now()
 		}
-		*d.LyricSize, *d.LyricAt = size, -2
+		*d.LyricSize, *d.LyricFont, *d.LyricAt = size, font, -2
 	}
 	// Builds can repeat before layout commits. Keep waiting for that entire
 	// frame, so following uses the new geometry rather than a previous pass.
@@ -86,7 +93,82 @@ func LyricsPane(c *ui.Context, d Deps, tr *qqmusic.Track, h float32) {
 		scroll.Invisible()
 	}
 	defer d.QuietCard(c, dim, h*0.18)
-	TimedLines(c, ly, scroll, lines, pos, cur, lag, LinesStyle{Size: size, TranslationSize: 17 * size / LyricsFontSizeDefault, Weight: 800, LineHeight: 1.25, Quiet: quiet, Relayout: resized}, nil)
+	ly.Font, ly.Browse = font, d.LyricBrowse
+	TimedLines(c, ly, scroll, lines, pos, cur, lag, LinesStyle{Font: font, Size: size, TranslationSize: 17 * size / LyricsFontSizeDefault, Weight: 800, LineHeight: 1.25, Quiet: quiet, Relayout: resized || resumed}, nil)
+}
+
+// lyricStep steps the glide of the lyrics or captions, and leaves the line
+// sung to the listener once they scroll.
+func lyricStep(c *ui.Context, d Deps) (float32, bool) {
+	if c.WindowHidden() {
+		if !*d.LyricBrowse {
+			*d.LyricResume = true
+		}
+		return 0, true
+	}
+	if *d.LyricResume {
+		*d.LyricResume = false
+		if !*d.LyricBrowse {
+			// Restoration can replace the scroll offset without any user
+			// input. Do not interpret that change as browsing. Follow using
+			// the restored layout's committed bounds in the next frame.
+			*d.LyricGlide = Glide{set: d.LyricScroll.Y}
+			*d.LyricAt = -2
+			*d.LyricResumeAt = c.Now()
+		}
+	}
+	if !(*d.LyricResumeAt).IsZero() && (*d.LyricResumeAt).Equal(c.Now()) {
+		return 0, true
+	}
+	lag, scrolled := d.LyricGlide.Step(c, d.LyricScroll)
+	if scrolled {
+		*d.LyricBrowse = true
+	}
+	return lag, false
+}
+
+// lyricsFollowButton floats at the foot of the lyrics while the listener
+// reads them on their own, its arrow pointing up or down to the line sung:
+// a click brings it back, and the lyrics follow it again.
+func lyricsFollowButton(c *ui.Context, up bool) ui.Element {
+	in := &ui.Motion{Y: 10, Scale: 0.96}
+	label := "回到下方的当前歌词"
+	if up {
+		label = "回到上方的当前歌词"
+	}
+	var b ui.Element
+	ui.Row(c).Absolute().Left(0).Right(8).Bottom(24).Justify(ui.Center).PassThrough().
+		Transition(ui.ElementTransition{Animation: &ui.Snappy, Enter: in, Exit: in}).Children(func() {
+		// A capsule of frosted light glass: it reads over any line under
+		// it, which still shows through.
+		b = ui.ButtonBase(c).Height(40).PaddingX(20).Gap(8).Radius(999).AlignItems(ui.Center).FocusRing(false).
+			Label(label).Tooltip(label).TextColor(white).
+			Material(glass.Blur{Radius: 20}).Border(1, white.Alpha(0.28)).Shadow(0, 8, 24, -6, theme.Shade(7))
+		bg := white.Alpha(0.22)
+		if b.Hovered() || b.FocusVisible() {
+			bg = white.Alpha(0.3)
+		}
+		pose := ui.Pose{}
+		if b.Pressed() {
+			bg, pose.Scale = white.Alpha(0.36), 0.96
+		}
+		// The material takes the background's place: the light goes over it.
+		fill := b.AnimateColor("bg", bg, ui.Animation{Duration: 140 * time.Millisecond})
+		b.Draw(func(p *ui.Painter, r ui.Rect) { p.Fill(r, fill, r.H/2) }).AnimatePose(pose, ui.Snappy)
+		b.Children(func() {
+			// The arrow turns over as the line sung passes where the
+			// listener reads.
+			turn := float32(0)
+			if up {
+				turn = 180
+			}
+			ui.Box(c.Key("arrow")).Size(16, 16).AnimatePose(ui.Pose{Rotate: turn}, ui.Snappy).Children(func() {
+				ui.Icon(c, appui.IconArrowDown).Size(16, 16)
+			})
+			ui.Text(c, "回到当前").FontSize(15).FontWeight(700).SingleLine()
+		})
+	})
+	return b
 }
 
 // Lyrics is what the timed lines need of the app they draw in.
@@ -97,11 +179,14 @@ type Lyrics struct {
 	Glide    *Glide
 	At       *int
 	Glow     *ui.Color
+	Font     string
+	Browse   *bool // the listener reads the lyrics on their own
 }
 
 // LinesStyle is how TimedLines sets its lines: the size, weight and
 // leading of their type; quiet nearly hides them, under a hot comment.
 type LinesStyle struct {
+	Font            string
 	Size            float32
 	TranslationSize float32
 	Weight          int
@@ -117,7 +202,11 @@ type LinesStyle struct {
 // lit has still to go (Glide). foot, if set, follows the lines.
 func TimedLines(c *ui.Context, l Lyrics, scroll ui.Element, lines []lyrics.Line, pos time.Duration, cur int, lag float32, st LinesStyle, foot func()) {
 	pl := l.Player
+	if st.Font == "" {
+		st.Font = c.Theme().Font
+	}
 	var active ui.Element
+	seeked := false
 	scroll.Children(func() {
 		ui.Column(c).Gap(6).Translate(0, -lag).Children(func() {
 			for i, line := range lines {
@@ -149,7 +238,7 @@ func TimedLines(c *ui.Context, l Lyrics, scroll ui.Element, lines []lyrics.Line,
 					text.Children(func() {
 						if on && line.Timed && len(line.Words) > 0 {
 							// The line sung lights up word by word as it is sung.
-							ui.RichText(c.Key("words")).FontSize(st.Size).FontWeight(st.Weight).LineHeight(st.LineHeight).LetterSpacing(-0.4).Children(func() {
+							ui.RichText(c.Key("words")).Font(st.Font).FontSize(st.Size).FontWeight(st.Weight).LineHeight(st.LineHeight).LetterSpacing(-0.4).Children(func() {
 								for wi, wd := range line.Words {
 									lit := wd.Progress(pos)
 									ui.Text(c.Key(wi), wd.Text).TextColor(white.Alpha(0.38 + 0.62*lit))
@@ -163,14 +252,14 @@ func TimedLines(c *ui.Context, l Lyrics, scroll ui.Element, lines []lyrics.Line,
 								}
 							}
 						} else {
-							ui.Text(c, line.Text).FontSize(st.Size).FontWeight(st.Weight).LineHeight(st.LineHeight).LetterSpacing(-0.4).TextColor(white)
+							ui.Text(c, line.Text).Font(st.Font).FontSize(st.Size).FontWeight(st.Weight).LineHeight(st.LineHeight).LetterSpacing(-0.4).TextColor(white)
 						}
 						if line.Translation != "" {
 							size := st.TranslationSize
 							if size == 0 {
 								size = 17
 							}
-							ui.Text(c, line.Translation).FontSize(size).FontWeight(600).TextColor(white.Alpha(0.7))
+							ui.Text(c, line.Translation).Font(st.Font).FontSize(size).FontWeight(600).TextColor(white.Alpha(0.7))
 						}
 						// The line sung again in light, over it and blurred.
 						if on && l.glows() {
@@ -180,6 +269,7 @@ func TimedLines(c *ui.Context, l Lyrics, scroll ui.Element, lines []lyrics.Line,
 				})
 				if b.Clicked() {
 					pl.Seek(line.At)
+					seeked = true
 				}
 				if on {
 					active = b
@@ -190,24 +280,47 @@ func TimedLines(c *ui.Context, l Lyrics, scroll ui.Element, lines []lyrics.Line,
 			foot()
 		}
 	})
+	// followY is the offset that brings the line sung a third of the way
+	// down, and whether the line is laid out for it yet.
+	followY := func() (float32, bool) {
+		if !active.Valid() {
+			return 0, true
+		}
+		// Where the glide is going, without where it still is.
+		box, lb := scroll.Bounds(), active.LayoutBounds()
+		if lb.H <= 0 || box.H <= 0 {
+			return 0, false
+		}
+		return min(max(0, lb.Y-box.Y+l.Scroll.Y-box.H*0.3), l.Scroll.MaxY), true
+	}
+	if l.Browse != nil && *l.Browse && !st.Quiet {
+		y, _ := followY()
+		if lyricsFollowButton(c.Key("lyrics-follow"), y < l.Scroll.Y).Clicked() {
+			*l.Browse, *l.At = false, -2
+		}
+	}
+	if seeked {
+		// A line chosen is sung from: the lyrics follow it again, once the
+		// next frame finds it lit.
+		if l.Browse != nil {
+			*l.Browse, *l.At = false, -2
+		}
+		c.AnimationFrame()
+		return
+	}
 	if st.Relayout {
 		c.AnimationFrame()
 		return
 	}
-	// Bring the line sung to a third of the way down, once it changed.
-	if cur != *l.At {
-		box := scroll.Bounds()
-		target := float32(0)
-		if active.Valid() {
-			// Where the glide is going, without where it still is.
-			if lb := active.LayoutBounds(); lb.H > 0 && box.H > 0 {
-				target = lb.Y - box.Y + l.Scroll.Y - box.H*0.3
-			} else {
-				return // not laid out yet: the next frame scrolls
-			}
+	// Bring the line sung to a third of the way down, once it changed,
+	// unless the listener scrolled away to read on their own.
+	if cur != *l.At && (l.Browse == nil || !*l.Browse) {
+		target, ok := followY()
+		if !ok {
+			return // not laid out yet: the next frame scrolls
 		}
 		*l.At = cur
-		l.Glide.To(c, l.Scroll, min(max(0, target), l.Scroll.MaxY))
+		l.Glide.To(c, l.Scroll, target)
 	}
 }
 
@@ -236,6 +349,10 @@ type Glide struct {
 // pixel in about 800 ms.
 const lyricOmega = 10
 
+// NewGlide returns a glide at rest at offset, so that a change of layout is
+// not taken for the listener scrolling.
+func NewGlide(offset float32) Glide { return Glide{set: offset} }
+
 // at returns the lag at now, and how fast it changes, in DIPs a second.
 func (g *Glide) at(now time.Time) (lag, v float64) {
 	if !g.on {
@@ -261,26 +378,31 @@ func (g *Glide) To(c *ui.Context, s *ui.ScrollState, target float32) {
 
 // Step returns the lag of the lines in this frame, and asks for the next
 // while there is one. The listener scrolling stops the glide where it
-// shows.
-func (g *Glide) Step(c *ui.Context, s *ui.ScrollState) float32 {
+// shows, and step reports it: the offset moved from the one it set, other
+// than by the lyrics growing shorter under it.
+func (g *Glide) Step(c *ui.Context, s *ui.ScrollState) (lag float32, scrolled bool) {
 	if g.pending {
 		s.Y, g.set, g.pending = g.target, g.target, false
 	}
+	moved := s.Y != g.set
+	scrolled = moved && !(s.Y == s.MaxY && g.set > s.MaxY)
 	if !g.on {
-		return 0
+		g.set = s.Y
+		return 0, scrolled
 	}
-	lag, v := g.at(c.Now())
-	if s.Y != g.set {
-		// The listener took over: the offset takes what showed.
-		s.Y, g.on = max(0, min(s.Y+float32(lag), s.MaxY)), false
-		return 0
+	at, v := g.at(c.Now())
+	if moved {
+		// The offset takes what showed.
+		s.Y, g.on = max(0, min(s.Y+float32(at), s.MaxY)), false
+		g.set = s.Y
+		return 0, scrolled
 	}
-	if math.Abs(lag) < 0.5 && math.Abs(v) < 20 {
+	if math.Abs(at) < 0.5 && math.Abs(v) < 20 {
 		g.on = false
-		return 0
+		return 0, false
 	}
 	c.AnimationFrame()
-	return float32(lag)
+	return float32(at), false
 }
 
 // QuietFaded is how much of the lyrics shows under a hot comment.
@@ -378,6 +500,6 @@ func (l Lyrics) lineGlow(c *ui.Context, line lyrics.Line, pos time.Duration, st 
 	} else {
 		glow = ui.Text(c.Key("glow"), line.Text).TextColor(l.Glow.Alpha(max(min(aura, 1), 0.02)))
 	}
-	glow.Absolute().Top(0).Left(0).Right(0).FontSize(st.Size).FontWeight(st.Weight).LineHeight(st.LineHeight).LetterSpacing(-0.4).
+	glow.Absolute().Top(0).Left(0).Right(0).Font(st.Font).FontSize(st.Size).FontWeight(st.Weight).LineHeight(st.LineHeight).LetterSpacing(-0.4).
 		Blur(st.Size * 0.22).PassThrough()
 }

@@ -112,8 +112,13 @@ func TestTaskbarLyricsTwoLineContent(t *testing.T) {
 				}
 			}
 			p.Seek(lines[len(lines)-1].At + time.Second)
-			if after := d.Content(p.Position()); after.preview != "" || after.text == content.text {
-				t.Fatalf("seek kept an old Chinese preview or current line: %+v", after)
+			after := d.Content(p.Position())
+			if tc.preview != "" {
+				if after.activeRow != 1 || after.text != content.text || after.preview != content.preview {
+					t.Fatalf("seek to second row of pair did not keep both rows in place: %+v", after)
+				}
+			} else if after.preview != "" || after.text == content.text {
+				t.Fatalf("seek kept an old preview or current line: %+v", after)
 			}
 		})
 	}

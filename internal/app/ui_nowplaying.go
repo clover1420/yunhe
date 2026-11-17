@@ -4,6 +4,8 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/ui"
+
+	"lilt/internal/ui/features/nowplaying"
 )
 
 var white = paper
@@ -64,7 +66,8 @@ func (a *app) choosePane(i int) {
 // different size changes wrapping and line positions even while paused.
 func (a *app) lyricsSizeChanged() {
 	a.lyricAt = -2
-	a.lyricGlide = lyricGlide{}
+	// The offset stays where it is, not taken for the listener scrolling.
+	a.lyricGlide = nowplaying.NewGlide(a.lyricScroll.Y)
 	a.settings.Save()
 }
 

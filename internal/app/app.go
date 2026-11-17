@@ -137,6 +137,10 @@ type app struct {
 	lyricTrack  int64
 	lyricSize   float32   // size used for the preceding lyrics layout
 	lyricSizeAt time.Time // frame in which the lyrics changed size
+	lyricFont   string    // family used for the preceding lyrics layout
+	lyricBrowse bool      // the listener scrolled the lyrics away to read on
+	lyricResume bool      // the lyrics were hidden, and follow again once shown
+	lyricResumeAt time.Time
 	queueList   ui.ListState
 	queueAt     int // the row of the queue pane last scrolled to, -1 while it is hidden
 	comments    commentState

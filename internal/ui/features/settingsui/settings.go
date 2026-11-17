@@ -320,7 +320,7 @@ func content(c *ui.Context, d Deps) {
 			})
 		}
 
-		row("音质", "按 QQ 音乐账号权限播放 MP3 或 FLAC，下一首生效", func() {
+		row("音质", "按 QQ 音乐账号权限播放，优先使用所选音质，不可用时自动降低音质；下一首生效", func() {
 			labels := make([]string, len(QualityLevels))
 			chosen := QualityLevels[1].Label
 			for i, q := range QualityLevels {
@@ -329,13 +329,14 @@ func content(c *ui.Context, d Deps) {
 					chosen = q.Label
 				}
 			}
-			if ui.Select(c.Key("quality"), &chosen, labels).Label("音质").Width(150).Changed() {
+			if ui.Select(c.Key("quality"), &chosen, labels).Label("选择音质").Width(150).Changed() {
 				for _, q := range QualityLevels {
 					if q.Label == chosen {
 						s.Quality = q.Level
 					}
 				}
-				d.Changed()
+				s.Save()
+				d.Redraw()
 			}
 		})
 		row("音量平衡", "", func() {
@@ -371,7 +372,7 @@ func content(c *ui.Context, d Deps) {
 			}
 		})
 
-		row("歌曲缓存", d.CacheUsage(), func() {
+		row("缓存上限", d.CacheUsage(), func() {
 			labels := make([]string, len(CacheLimits))
 			chosen := CacheLimits[2].Label
 			for i, l := range CacheLimits {
@@ -380,13 +381,14 @@ func content(c *ui.Context, d Deps) {
 					chosen = l.Label
 				}
 			}
-			if ui.Select(c.Key("cache"), &chosen, labels).Label("歌曲缓存").Width(150).Disabled(d.CacheMoving).Changed() {
+			if ui.Select(c.Key("cache"), &chosen, labels).Label("选择缓存上限").Width(150).Disabled(d.CacheMoving).Changed() {
 				for _, l := range CacheLimits {
 					if l.Label == chosen {
 						s.CacheMB = l.MB
 					}
 				}
-				d.Changed()
+				s.Save()
+				d.Redraw()
 				d.ApplyCacheLimit()
 			}
 		})
@@ -478,6 +480,33 @@ func content(c *ui.Context, d Deps) {
 		})
 		row("光晕强度", "越高越亮，字也越容易糊在一起", func() {
 			valueSlider(c.Key("glow-level"), d, "光晕强度", "光晕强度", &s.GlowLevel, s.NpLight)
+		})
+		row("歌词字体", "", func() {
+			const defaultFont = "跟随默认"
+			families := ui.FontFamilies()
+			labels := make([]string, 1, len(families)+2)
+			labels[0] = defaultFont
+			chosen := defaultFont
+			found := s.LyricsFont == ""
+			for _, family := range families {
+				labels = append(labels, family.Name)
+				if family.Name == s.LyricsFont {
+					chosen, found = family.Name, true
+				}
+			}
+			if !found {
+				chosen = s.LyricsFont + "（不可用）"
+				labels = append(labels, chosen)
+			}
+			if ui.Select(c.Key("lyrics-font"), &chosen, labels).Label("选择歌词字体").Width(180).Changed() {
+				if chosen == defaultFont {
+					s.LyricsFont = ""
+				} else {
+					s.LyricsFont = chosen
+				}
+				s.Save()
+				d.Redraw()
+			}
 		})
 	})
 

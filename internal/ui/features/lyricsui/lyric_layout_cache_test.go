@@ -8,6 +8,7 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"lilt/internal/media/lyrics"
+	"lilt/internal/ui/base/theme"
 )
 
 var (
@@ -40,8 +41,11 @@ func TestLyricLayoutsRetainStableLayers(t *testing.T) {
 				if desktop.outline != firstDesktop.outline || desktop.translation != firstDesktop.translation || desktop.preview != firstDesktop.preview {
 					t.Fatal("playback reshaped a stable desktop lyric layer")
 				}
-				if timed == (desktop.text == firstDesktop.text) {
-					t.Fatal("desktop foreground either lost word colors or reshaped unchanged LRC")
+				if desktop.text != firstDesktop.text {
+					t.Fatal("playback reshaped desktop foreground")
+				}
+				if timed && (desktop.wordColors[0] == firstDesktop.wordColors[0] || firstDesktop.wordColors[0] != desktopLyricWordColor(cachePaper, line.Words[0].Progress(1500*time.Millisecond))) {
+					t.Fatal("desktop word colors are stale or mutated an earlier frame")
 				}
 
 				for _, height := range []float32{28, 42} {
@@ -57,11 +61,115 @@ func TestLyricLayoutsRetainStableLayers(t *testing.T) {
 					if taskbar.outline != firstTaskbar.outline || taskbar.secondary != firstTaskbar.secondary {
 						t.Fatal("playback reshaped a stable taskbar lyric layer")
 					}
-					if timed == (taskbar.text == firstTaskbar.text) || taskbar.progressX <= firstTaskbar.progressX {
+					if taskbar.text != firstTaskbar.text || taskbar.progressX <= firstTaskbar.progressX {
 						t.Fatal("taskbar cached stale brightness or scrolling progress")
+					}
+					if timed && (taskbar.wordColors[0] == firstTaskbar.wordColors[0] || firstTaskbar.wordColors[0] != theme.Neutral(true, 12).Alpha(DesktopRestAlpha+(DesktopSungAlpha-DesktopRestAlpha)*line.Words[0].Progress(1500*time.Millisecond))) {
+						t.Fatal("taskbar word colors are stale or mutated an earlier frame")
 					}
 				}
 			})
+		}
+	}
+	t.Run("active-row2-timed", func(t *testing.T) {
+		first := lyrics.Line{At: time.Second, End: 3 * time.Second, Text: "我们", Timed: true,
+			Words: []lyrics.Word{{Text: "我们", Start: time.Second, End: 3 * time.Second}}}
+		second := lyrics.Line{At: 4 * time.Second, End: 8 * time.Second, Text: "一起听", Timed: true,
+			Words: []lyrics.Word{{Text: "一起", Start: 4 * time.Second, End: 6 * time.Second}, {Text: "听", Start: 6 * time.Second, End: 8 * time.Second}}}
+		content := desktopLyricContent{line: first, secondaryLine: second, text: first.Text, preview: second.Text, index: 1, activeRow: 1}
+		position := 4500 * time.Millisecond
+		var desktop desktopLyricLayouts
+		dt := ui.NewTester(func(c *ui.Context) {
+			desktop = DesktopLayouts(c, content, position, 32, 300, cachePaper)
+		}, 320, 160)
+		dt.Frame()
+		firstDesktop := desktop
+		position = 5500 * time.Millisecond
+		dt.Frame()
+		if desktop.preview != firstDesktop.preview || desktop.previewOutline != firstDesktop.previewOutline || desktop.previewWordColors[0] == firstDesktop.previewWordColors[0] {
+			t.Fatal("row 2 playback either reshaped preview geometry or failed to update word colors")
+		}
+		position = 4500 * time.Millisecond
+		var taskbar taskbarLyricLayout
+		tt := ui.NewTester(func(c *ui.Context) {
+			taskbar = MakeLayout(c, content, position, true, 42)
+		}, 280, 42)
+		tt.Frame()
+		firstTaskbar := taskbar
+		position = 5500 * time.Millisecond
+		tt.Frame()
+		if taskbar.secondary != firstTaskbar.secondary || taskbar.secondaryOutline != firstTaskbar.secondaryOutline ||
+			taskbar.secondaryWordColors[0] == firstTaskbar.secondaryWordColors[0] || taskbar.secondaryProgressX <= firstTaskbar.secondaryProgressX {
+			t.Fatal("row 2 taskbar playback either reshaped secondary geometry or kept stale word progress")
+		}
+	})
+}
+
+// Identical joined text can have different word boundaries, so a new timing partition must repaint the right characters.
+func TestTimedLyricWordPartition(t *testing.T) {
+	content := desktopLyricContent{index: 0, text: "office"}
+	content.line = lyrics.Line{Text: content.text, Timed: true, Words: []lyrics.Word{
+		{Text: "of", Start: 0, End: time.Second},
+		{Text: "fice", Start: time.Second, End: 2 * time.Second},
+	}}
+	var desktop desktopLyricLayouts
+	var taskbar taskbarLyricLayout
+	tt := ui.NewTester(func(c *ui.Context) {
+		desktop = DesktopLayouts(c, content, 500*time.Millisecond, 32, 300, cachePaper)
+		taskbar = MakeLayout(c, content, 500*time.Millisecond, true, 28)
+	}, 320, 160)
+	tt.Frame()
+	firstDesktop, firstTaskbar := desktop, taskbar
+	content.line.Words = []lyrics.Word{
+		{Text: "off", Start: 0, End: time.Second},
+		{Text: "ice", Start: time.Second, End: 2 * time.Second},
+	}
+	tt.Frame()
+	if desktop.text == firstDesktop.text || taskbar.text == firstTaskbar.text {
+		t.Fatal("new word partition reused the previous color boundaries")
+	}
+	firstDesktop, firstTaskbar = desktop, taskbar
+	// The same chorus geometry remains reusable with different timestamps.
+	content.line.Words = []lyrics.Word{
+		{Text: "off", Start: time.Second, End: 2 * time.Second},
+		{Text: "ice", Start: 2 * time.Second, End: 3 * time.Second},
+	}
+	tt.Frame()
+	if desktop.text != firstDesktop.text || taskbar.text != firstTaskbar.text ||
+		desktop.wordColors[0] == firstDesktop.wordColors[0] || taskbar.progressX == firstTaskbar.progressX {
+		t.Fatal("new chorus timings either reshaped text or retained old progress")
+	}
+}
+
+// Taskbar scrolling must use normalized UTF-16 boundaries, including astral and combining characters.
+func TestTaskbarLyricRetainedWordCarets(t *testing.T) {
+	words := []lyrics.Word{
+		{Text: "风😀\r\n", Start: 0, End: time.Second},
+		{Text: "e\u0301\t終", Start: time.Second, End: 2 * time.Second},
+	}
+	content := desktopLyricContent{index: 0, text: "风😀\r\ne\u0301\t終", translation: "translation",
+		line: lyrics.Line{Timed: true, Words: words}}
+	for _, height := range []float32{28, 42} {
+		var layout taskbarLyricLayout
+		tt := ui.NewTester(func(c *ui.Context) {
+			layout = MakeLayout(c, content, 1500*time.Millisecond, true, height)
+		}, 300, int(height))
+		tt.Frame()
+		left, right := layout.text.Caret(4).X, layout.text.Caret(8).X
+		if layout.progressX != left+(right-left)*0.5 {
+			t.Fatalf("height %v: word scrolling lost UTF-16/newline normalization: %v", height, layout.progressX)
+		}
+	}
+}
+
+// A newly published lyric slice must replace the cached language decision even when its length stays the same.
+func TestLyricTranslationPolicyPublication(t *testing.T) {
+	for _, policy := range []func([]lyrics.Line) bool{DesktopTranslation, TaskbarTranslation} {
+		var cache lyricTranslationPolicy
+		chinese := []lyrics.Line{{Text: "我们"}}
+		japanese := []lyrics.Line{{Text: "かな", Translation: "我们"}}
+		if cache.get(chinese, policy) || !cache.get(japanese, policy) || cache.get(chinese, policy) {
+			t.Fatal("language decision remained attached to an earlier lyric publication")
 		}
 	}
 }
@@ -99,13 +207,13 @@ func TestLyricLayoutCacheInputs(t *testing.T) {
 // Changing desktop content, size, width or theme must replace its corresponding retained layers.
 func TestDesktopLyricLayoutsRefreshInputs(t *testing.T) {
 	content := desktopLyricContent{text: "Stay with me", translation: "留在我身边"}
-	size, width, family := float32(32), float32(300), "sans-serif"
+	size, width, color, family := float32(32), float32(300), cachePaper, "sans-serif"
 	var layout desktopLyricLayouts
 	tt := ui.NewTester(func(c *ui.Context) {
 		theme := *c.Theme()
 		theme.Font = family
 		c.SetTheme(&theme)
-		layout = DesktopLayouts(c, content, 0, size, width, cachePaper)
+		layout = DesktopLayouts(c, content, 0, size, width, color)
 	}, 320, 160)
 	tt.Frame()
 	for _, change := range []struct {
@@ -119,6 +227,7 @@ func TestDesktopLyricLayoutsRefreshInputs(t *testing.T) {
 		{"font size", func() { size = 40 }, func(a, b desktopLyricLayouts) bool { return a.outline != b.outline && a.preview != b.preview }},
 		{"width", func() { width = 150 }, func(a, b desktopLyricLayouts) bool { return a.outline != b.outline && a.preview != b.preview }},
 		{"font family", func() { family = "serif" }, func(a, b desktopLyricLayouts) bool { return a.outline != b.outline }},
+		{"color", func() { color = cacheGray }, func(a, b desktopLyricLayouts) bool { return a.text != b.text && a.preview != b.preview }},
 	} {
 		t.Run(change.name, func(t *testing.T) {
 			before := layout

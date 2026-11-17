@@ -63,13 +63,21 @@ func easeOutCubic(t float32) float32 {
 	return 1 - (1-t)*(1-t)*(1-t)
 }
 
+// stageFamily is the lyric font family, or the window's when none is set.
+func stageFamily(c *ui.Context, d Deps) string {
+	if d.Settings != nil && d.Settings.LyricsFont != "" {
+		return d.Settings.LyricsFont
+	}
+	return c.Theme().Font
+}
+
 // stageShapes lays out the words of a line at font size f.
-func stageShapes(c *ui.Context, l *lyrics.Line, f float32) []wordShape {
+func stageShapes(c *ui.Context, l *lyrics.Line, f float32, family string) []wordShape {
 	seed := float64(l.At / time.Millisecond)
 	shapes := make([]wordShape, len(l.Words))
 	widths := make([]float32, len(l.Words))
 	for i, w := range l.Words {
-		widths[i], _ = c.MeasureText(0, ui.Span{Text: w.Text, Size: f, Weight: 800})
+		widths[i], _ = c.MeasureText(0, ui.Span{Text: w.Text, Font: family, Size: f, Weight: 800})
 	}
 	for i := range l.Words {
 		ws := seed + float64(i)
@@ -163,10 +171,10 @@ func Stage(c *ui.Context, d Deps, tr *qqmusic.Track, accent ui.Color) {
 			// The translation, and the line coming next, along the foot.
 			ui.Column(c).Absolute().Left(0).Right(0).Bottom(24).AlignItems(ui.Center).Gap(8).PassThrough().Children(func() {
 				if cur >= 0 && lines[cur].Translation != "" {
-					ui.Text(c.Key("translation"), lines[cur].Translation).FontSize(18).FontWeight(600).TextColor(white.Alpha(0.72)).TextAlign(ui.Center)
+					ui.Text(c.Key("translation"), lines[cur].Translation).Font(stageFamily(c, d)).FontSize(18).FontWeight(600).TextColor(white.Alpha(0.72)).TextAlign(ui.Center)
 				}
 				if cur+1 < len(lines) {
-					ui.Text(c.Key("next"), lines[cur+1].Text).FontSize(14).TextColor(white.Alpha(0.32)).TextAlign(ui.Center).SingleLine()
+					ui.Text(c.Key("next"), lines[cur+1].Text).Font(stageFamily(c, d)).FontSize(14).TextColor(white.Alpha(0.32)).TextAlign(ui.Center).SingleLine()
 				}
 			})
 		})
@@ -210,16 +218,17 @@ func stageNextFrame(c *ui.Context, lines []lyrics.Line, cur int, pos, lead time.
 // stageLine shows the words of l as they are at pos, the whole line at
 // opacity fade.
 func stageLine(c *ui.Context, d Deps, l *lyrics.Line, pos time.Duration, f, w, h, fade float32, accent ui.Color) {
+	family := stageFamily(c, d)
 	switch d.Settings.StageStyle {
 	case "partita":
 		partitaLine(c, d, l, pos, f, h, fade, accent)
 		return
 	case "tilt":
-		tiltLine(c, l, pos, w, fade, accent, d.Settings.StageSparks)
+		tiltLine(c, l, pos, w, fade, accent, d.Settings.StageSparks, family)
 		return
 	}
 	seed := float64(l.At / time.Millisecond)
-	shapes := stageShapes(c, l, f)
+	shapes := stageShapes(c, l, f, family)
 	// Where the line sits: to one side or the middle, a little up or down.
 	justify := []ui.Align{ui.Start, ui.Center, ui.End}[int(seed)%3]
 	lift := []float32{-0.14, 0, 0.12}[int(seed*2)%3] * h
@@ -228,14 +237,14 @@ func stageLine(c *ui.Context, d Deps, l *lyrics.Line, pos time.Duration, f, w, h
 		Wrap().Justify(justify).AlignContent(ui.Center).AlignItems(ui.Center).Translate(0, lift).
 		Opacity(fade).PassThrough().Children(func() {
 		for i, word := range l.Words {
-			stageWord(c.Key(i), word, shapes[i], pos, f, accent, d.Settings.StageSparks)
+			stageWord(c.Key(i), word, shapes[i], pos, f, accent, d.Settings.StageSparks, family)
 		}
 	})
 }
 
 // stageWord shows a word as it is at pos: waiting to be sung, being sung,
 // or sung.
-func stageWord(c *ui.Context, word lyrics.Word, s wordShape, pos time.Duration, f float32, accent ui.Color, sparks bool) {
+func stageWord(c *ui.Context, word lyrics.Word, s wordShape, pos time.Duration, f float32, accent ui.Color, sparks bool, family string) {
 	const lookahead = 80 * time.Millisecond
 	start := word.Start - lookahead
 	end := max(word.End, word.Start+150*time.Millisecond)
@@ -271,13 +280,13 @@ func stageWord(c *ui.Context, word lyrics.Word, s wordShape, pos time.Duration, 
 
 	box := ui.Box(c).MarginEnd(s.margin).Translate(x, y).Rotate(rotate).Scale(scale, scale).Opacity(opacity)
 	box.Children(func() {
-		text := ui.Text(c.Key("body"), word.Text).FontSize(f).FontWeight(800).NoWrap().TextColor(color)
+		text := ui.Text(c.Key("body"), word.Text).Font(family).FontSize(f).FontWeight(800).NoWrap().TextColor(color)
 		if blur > 0.3 {
 			text.Blur(blur)
 		}
 		if glow > 0.01 {
 			// The glow: the word again, in light, blurred around it.
-			ui.Text(c.Key("glow"), word.Text).Absolute().Top(0).Left(0).FontSize(f).FontWeight(800).NoWrap().
+			ui.Text(c.Key("glow"), word.Text).Absolute().Top(0).Left(0).Font(family).FontSize(f).FontWeight(800).NoWrap().
 				TextColor(accent.Alpha(0.85 * glow)).Blur(f * 0.2).PassThrough()
 		}
 	})
@@ -551,7 +560,7 @@ func partitaLine(c *ui.Context, d Deps, l *lyrics.Line, pos time.Duration, f, h,
 			widths := make([]float32, len(words))
 			seed := float64(words[0].Start/time.Millisecond) / 1000
 			for i, w := range words {
-				widths[i], _ = c.MeasureText(0, ui.Span{Text: w.Text, Size: f, Weight: 800})
+				widths[i], _ = c.MeasureText(0, ui.Span{Text: w.Text, Font: stageFamily(c, d), Size: f, Weight: 800})
 				ws := seed + float64(i)*7.13
 				shapes[i] = wordShape{
 					x:      (transport.LineRandom(ws, 1) - 0.5) * 12,
@@ -584,7 +593,7 @@ func partitaLine(c *ui.Context, d Deps, l *lyrics.Line, pos time.Duration, f, h,
 				}).
 				Children(func() {
 					for i, w := range words {
-						stageWord(c.Key(i), w, shapes[i], pos, f, accent, d.Settings.StageSparks)
+						stageWord(c.Key(i), w, shapes[i], pos, f, accent, d.Settings.StageSparks, stageFamily(c, d))
 					}
 				})
 		}
@@ -680,7 +689,7 @@ func SplitParts(words []lyrics.Word, units [][2]int, n int) []TiltPart {
 // the accent, its characters up and down by turns. The whole line is at
 // opacity fade, rising a little as it goes; with sparks, each word throws
 // them as it is sung.
-func tiltLine(c *ui.Context, l *lyrics.Line, pos time.Duration, w, fade float32, accent ui.Color, sparks bool) {
+func tiltLine(c *ui.Context, l *lyrics.Line, pos time.Duration, w, fade float32, accent ui.Color, sparks bool, family string) {
 	size := min(w*0.06875, 90)
 	avail := w * 0.85
 	style := func(p TiltPart) (weight int, spacing float32) {
@@ -696,7 +705,7 @@ func tiltLine(c *ui.Context, l *lyrics.Line, pos time.Duration, w, fade float32,
 			text += w.Text
 		}
 		text = strings.TrimSpace(text)
-		tw, _ := c.MeasureText(0, ui.Span{Text: text, Size: size, Weight: weight})
+		tw, _ := c.MeasureText(0, ui.Span{Text: text, Font: family, Size: size, Weight: weight})
 		return tw + float32(utf8.RuneCountInString(text))*size*spacing
 	}
 	widest := func(parts []TiltPart) float32 {
@@ -714,14 +723,14 @@ func tiltLine(c *ui.Context, l *lyrics.Line, pos time.Duration, w, fade float32,
 	ui.Column(c.Key(l.At)).Absolute().Top(0).Left(0).Right(0).Bottom(0).Center().Gap(14).
 		Translate(0, -12*(1-fade)).Opacity(fade).PassThrough().Children(func() {
 		for pi, part := range parts {
-			tiltPartView(c.Key(pi), l.Words[part.From:part.To], part, pos, size, accent, sparks, pi == len(parts)-1)
+			tiltPartView(c.Key(pi), l.Words[part.From:part.To], part, pos, size, accent, sparks, pi == len(parts)-1, family)
 		}
 	})
 }
 
 // tiltPartView shows a part of a line on 倾诉, its words, as they are at
 // pos, last when the part ends the line.
-func tiltPartView(c *ui.Context, words []lyrics.Word, part TiltPart, pos time.Duration, size float32, accent ui.Color, sparks, last bool) {
+func tiltPartView(c *ui.Context, words []lyrics.Word, part TiltPart, pos time.Duration, size float32, accent ui.Color, sparks, last bool, family string) {
 	ease := func(t float32) float32 { t = clamp01(t); return 1 - (1-t)*(1-t) }
 	since := float32((pos - (words[0].Start - tiltLead)).Seconds())
 	weight, spacing, gap, color, pulse := 400, float32(0.08), float32(0.25), white, float32(0.15)
@@ -763,7 +772,7 @@ func tiltPartView(c *ui.Context, words []lyrics.Word, part TiltPart, pos time.Du
 				}
 				s := 1 + swell*pulse
 				shown := ease((since - float32(k)*stagger) / 0.5)
-				ch := ui.Text(c.Key([2]int{wi, i}), string(r)).FontSize(size).FontWeight(weight).NoWrap().
+				ch := ui.Text(c.Key([2]int{wi, i}), string(r)).Font(family).FontSize(size).FontWeight(weight).NoWrap().
 					TextColor(color).MarginEnd(size*spacing).Opacity(shown).Scale(s, s)
 				if part.Lean {
 					// Up and down by turns, from twice as far.

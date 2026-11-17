@@ -65,6 +65,10 @@ type Deps struct {
 	LyricTrack    *int64
 	LyricSize     *float32
 	LyricSizeAt   *time.Time
+	LyricFont     *string
+	LyricBrowse   *bool
+	LyricResume   *bool
+	LyricResumeAt *time.Time
 
 	StageStyleOpen    *bool
 	LyricsSizeOpen    *bool

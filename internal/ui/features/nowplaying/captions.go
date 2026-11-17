@@ -64,12 +64,12 @@ func CaptionsPane(c *ui.Context, d Deps, tr *qqmusic.Track, h float32) {
 	}
 	if *d.LyricTrack != tr.ID {
 		*d.LyricTrack, *d.LyricAt = tr.ID, -2
-		*d.LyricScroll, *d.LyricGlide = ui.ScrollState{}, Glide{}
+		*d.LyricScroll, *d.LyricGlide, *d.LyricBrowse = ui.ScrollState{}, Glide{}, false
 	}
-	lag := d.LyricGlide.Step(c, d.LyricScroll)
+	lag, resumed := lyricStep(c, d)
 	scroll := ui.Scroll(c.Key("captions")).Grow(1).TrackScroll(d.LyricScroll).Padding(0, 8, h*0.5, 0)
-	ly := Lyrics{Player: pl, Settings: d.Settings, Scroll: d.LyricScroll, Glide: d.LyricGlide, At: d.LyricAt, Glow: d.GlowColor}
-	TimedLines(c, ly, scroll, lines, pos, cur, lag, LinesStyle{Size: 24, Weight: 700, LineHeight: 1.4}, func() {
+	ly := Lyrics{Player: pl, Settings: d.Settings, Scroll: d.LyricScroll, Glide: d.LyricGlide, At: d.LyricAt, Glow: d.GlowColor, Font: stageFamily(c, d), Browse: d.LyricBrowse}
+	TimedLines(c, ly, scroll, lines, pos, cur, lag, LinesStyle{Font: stageFamily(c, d), Size: 24, Weight: 700, LineHeight: 1.4, Relayout: resumed}, func() {
 		if cs.Work != nil {
 			ui.Text(c, "正在识别…").FontSize(14).FontWeight(600).TextColor(white.Alpha(0.35)).Padding(16, 12)
 		}
