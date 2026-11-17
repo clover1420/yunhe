@@ -12,15 +12,15 @@ import (
 func liveSearchAccount(t *testing.T) Session {
 	t.Helper()
 	if os.Getenv("LIVE") == "" || os.Getenv("LIVE_SEARCH_ACCOUNT") != "1" {
-		t.Skip("set LIVE=1 LIVE_SEARCH_ACCOUNT=1 to read Yunhe's saved session for QQ search")
+		t.Skip("set LIVE=1 LIVE_SEARCH_ACCOUNT=1 to read Lilt's saved session for QQ search")
 	}
 	b, err := mygo.Secrets.Service("dev.amamiya.qqmusic").Get(qqSessionSecret)
 	if err != nil {
-		t.Fatal("read Yunhe session:", err)
+		t.Fatal("read Lilt session:", err)
 	}
 	var session Session
 	if json.Unmarshal(b, &session) != nil || !session.valid() {
-		t.Skip("sign in to Yunhe before running account search")
+		t.Skip("sign in to Lilt before running account search")
 	}
 	previous := sessionSnapshot()
 	t.Cleanup(func() { setSession(previous) })

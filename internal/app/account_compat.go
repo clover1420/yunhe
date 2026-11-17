@@ -18,6 +18,9 @@ type accountRestoreState struct {
 	loading bool
 	failed  bool
 	boot    bool
+	reload  bool // the saved session should be read again before the account
+	rescan  bool // the saved session cannot be reused: signing in again is needed
+	err     string
 }
 
 // beginLoginQR is replaced by UI tests so retry actions never contact QQ.
@@ -41,7 +44,7 @@ func (a *app) boot() {
 	a.startAccountRestore(true)
 }
 
-// startAccountRestore reads saved credentials at boot; retries use the retained in-memory session.
+// Retries re-read credentials only if storage failed before a session reached memory.
 func (a *app) startAccountRestore(boot bool) {
 	if a.accountRestore.loading {
 		return
@@ -50,10 +53,15 @@ func (a *app) startAccountRestore(boot bool) {
 	a.accountRestore.loading = true
 	a.accountRestore.boot = boot
 	gen := a.accountRestore.gen
+	reload := boot || a.accountRestore.reload
 	go func() {
 		var prof *qqmusic.Profile
 		var err error
-		if !boot || restoreLoginSession() {
+		saved := true
+		if reload {
+			saved, err = restoreLoginSession()
+		}
+		if err == nil && saved {
 			prof, err = readLoginAccount()
 		}
 		a.post(func() {
@@ -62,7 +70,7 @@ func (a *app) startAccountRestore(boot bool) {
 			}
 			if boot || err == nil {
 				applyLoginProfile(a, a.profile)
-				a.accountRestore.failed = err != nil
+				a.setAccountRestoreError(err)
 			}
 		})
 	}()
@@ -75,11 +83,22 @@ func (a *app) acceptAccountRestore(gen int, prof *qqmusic.Profile, err error) bo
 	}
 	a.accountRestore.loading = false
 	a.accountRestore.boot = false
-	a.accountRestore.failed = err != nil
+	a.setAccountRestoreError(err)
 	if err == nil {
 		a.profile = prof
 	}
 	return true
+}
+
+func (a *app) setAccountRestoreError(err error) {
+	r := &a.accountRestore
+	r.failed = err != nil
+	r.reload = qqmusic.SessionNeedsReload(err)
+	r.rescan = qqmusic.SessionNeedsLogin(err)
+	r.err = ""
+	if err != nil {
+		r.err = qqmusic.SessionErrorMessage(err)
+	}
 }
 
 // signedIn shows what is personal to prof, or to nobody.
@@ -89,6 +108,9 @@ func (a *app) signedIn(prof *qqmusic.Profile) {
 	// Playback picks up where it was left, once the session that lets
 	// the listener play their songs is back.
 	a.restoreSession()
+	if prof != nil && a.pl != nil && a.pl.Err() == qqmusic.ErrLoginRequired.Error() {
+		a.pl.ClearErr()
+	}
 	a.mine, a.saved, a.recPlaylists, a.liked = nil, nil, nil, nil
 	a.clearSongShelves()
 	a.likedPrograms, a.askedPrograms = nil, nil
@@ -120,7 +142,7 @@ func (a *app) accountDeps() accountpkg.Deps {
 		Login:       &a.login,
 		AccountOpen: &a.accountOpen,
 		Profile:     func() *qqmusic.Profile { return a.profile },
-		Restore:     accountpkg.RestoreState{Loading: a.accountRestore.loading, Failed: a.accountRestore.failed},
+		Restore:     accountpkg.RestoreState{Loading: a.accountRestore.loading, Failed: a.accountRestore.failed, Rescan: a.accountRestore.rescan, Err: a.accountRestore.err},
 		RetryRestore: func() {
 			a.startAccountRestore(false)
 		},

@@ -63,6 +63,8 @@ type Settings struct {
 	// LyricsFontSize is the size the scrolling lyrics are set in; zero keeps
 	// the original size.
 	LyricsFontSize float64 `json:"lyricsFontSize,omitempty"`
+	// LyricsFont is the lyric font family; empty follows the app's default.
+	LyricsFont string `json:"lyricsFont,omitempty"`
 	// StageStyle is how the stage sets its lyrics (stageStyles): empty for
 	// Folia's classic, or the id of another of its visualizers.
 	StageStyle string `json:"stageStyle,omitempty"`

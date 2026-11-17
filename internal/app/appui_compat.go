@@ -61,6 +61,7 @@ var (
 	iconQueue     = appui.IconQueue
 	iconLyrics    = appui.IconLyrics
 	iconDown      = appui.IconDown
+	iconArrowDown = appui.IconArrowDown
 	iconBack      = appui.IconBack
 	iconForward   = appui.IconForward
 	iconNote      = appui.IconNote
@@ -85,4 +86,5 @@ var (
 	iconSun       = appui.IconSun
 	iconInfo      = appui.IconInfo
 	iconSignOut   = appui.IconSignOut
+	iconGrid      = appui.IconGrid
 )

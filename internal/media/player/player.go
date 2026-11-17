@@ -1,4 +1,4 @@
-package player
+﻿package player
 
 import (
 	"errors"
@@ -190,6 +190,67 @@ func (p *Player) PlayNext(t qqmusic.Track) {
 	p.sync()
 }
 
+// Remove deletes the queue's track i without mutating previously returned
+// slices so an in-progress queue build finishes cleanly.
+func (p *Player) Remove(i int) {
+	if i < 0 || i >= len(p.queue) {
+		return
+	}
+	pos := -1
+	for k, v := range p.order {
+		if v == i {
+			pos = k
+			break
+		}
+	}
+	if pos < 0 {
+		return
+	}
+	newQueue := slices.Delete(slices.Clone(p.queue), i, i+1)
+	newOrder := make([]int, 0, len(p.order)-1)
+	for k, v := range p.order {
+		if k == pos {
+			continue
+		}
+		if v > i {
+			v--
+		}
+		newOrder = append(newOrder, v)
+	}
+	p.queue, p.order = newQueue, newOrder
+	if len(p.queue) == 0 {
+		p.stop()
+		p.gen++
+		p.endRadio()
+		p.at = -1
+		p.track = nil
+		p.loading, p.playing, p.err = false, false, ""
+		p.lyrics, p.lyricsLoaded, p.instrumental = nil, false, false
+		p.pending = 0
+		p.sync()
+		return
+	}
+	if p.at < 0 {
+		p.sync()
+		return
+	}
+	switch {
+	case pos < p.at:
+		p.at--
+		p.sync()
+	case pos > p.at:
+		p.refill()
+		p.sync()
+	default:
+		wasPlaying := p.playing
+		nextAt := pos
+		if nextAt >= len(p.order) {
+			nextAt = 0
+		}
+		p.loadSkipping(nextAt, 0, wasPlaying, 0)
+	}
+}
+
 // PlayRadio plays tracks in their order, then goes on with those feed
 // gives as the queue nears its end, until something else is played. The
 // radio's name says which it is. feed calls got on the main thread.
@@ -352,6 +413,15 @@ func (p *Player) Ready() bool { return p.out != nil }
 // Err returns why the current track did not play, or "".
 func (p *Player) Err() string { return p.err }
 
+// ClearErr clears a pending playback error, as when account recovery succeeds.
+func (p *Player) ClearErr() {
+	if p.err == "" {
+		return
+	}
+	p.err = ""
+	p.sync()
+}
+
 // Stream returns what the current track streams, once loaded, or nil.
 func (p *Player) Stream() *qqmusic.Stream { return p.info }
 
@@ -359,6 +429,7 @@ func (p *Player) Shuffle() bool      { return p.shuffle }
 func (p *Player) Repeat() RepeatMode { return p.repeat }
 
 // Lyrics returns the current track's lyrics, and whether they have loaded.
+// Published lines are read-only; loading another result replaces the slice.
 func (p *Player) Lyrics() ([]lyrics.Line, bool) { return p.lyrics, p.lyricsLoaded }
 
 // Instrumental reports an explicit instrumental response for the current track.
@@ -549,11 +620,11 @@ func (p *Player) RefreshGain() {
 	if p.Normalize == nil || p.Normalize() == NormalizeOff || p.info == nil || p.track == nil {
 		return
 	}
-	// A song loaded with balancing off never waited for measurements. When
-	// enabled mid-song, fetch them without restarting or blocking playback.
+	// Enabling mid-song fetches measurements without restarting playback.
 	t, gen := *p.track, p.gen
+	fetch := songLoudness
 	go func() {
-		v, err := songLoudness(t)
+		v, err := fetch(t)
 		if err != nil {
 			return
 		}
@@ -569,13 +640,25 @@ func (p *Player) RefreshGain() {
 // applyGain sets the volume of what plays: the listener's, which the ear
 // hears in powers, and the track's gain, if normalizing.
 func (p *Player) applyGain() {
+	p.fade.setGain(p.gain())
+}
+
+func (p *Player) gain() float64 {
 	g := p.volume * p.volume
 	if p.Normalize != nil {
 		if mode := p.Normalize(); mode != NormalizeOff {
 			g *= normGain(p.info, mode)
 		}
 	}
-	p.fade.setGain(g)
+	return g
+}
+
+func (p *Player) applyLateLoudness(gen int, v qqmusic.Loudness) {
+	if gen != p.gen || p.info == nil {
+		return
+	}
+	p.info = withLoudness(p.info, v)
+	p.fade.rampGain(p.gain(), 200*time.Millisecond)
 }
 
 // normPreamp lifts balanced playback before peak protection.
@@ -668,19 +751,41 @@ func (p *Player) loadSkipping(at, skipped int, play bool, from time.Duration) {
 	p.announce(&t, nil)
 	p.refill()
 
-	go func() {
-		cover, err := qqmusic.Fetch(qqmusic.Sized(t.Album.PicURL, 600))
-		if err == nil {
-			p.post(func() {
-				if gen == p.gen {
-					p.announce(&t, cover)
+	cache := p.Cache
+	coverURL := qqmusic.Sized(t.Album.PicURL, 600)
+	if coverURL != "" {
+		go func() {
+			var cover []byte
+			var err error
+			if cached, ok := cache.LookupCover(coverURL); ok {
+				cover = cached
+			} else {
+				cover, err = fetchCover(coverURL)
+				if err == nil {
+					cache.KeepCover(coverURL, cover)
 				}
-			})
-		}
-	}()
+			}
+			if err == nil && len(cover) > 0 {
+				p.post(func() {
+					if gen == p.gen {
+						p.announce(&t, cover)
+					}
+				})
+			}
+		}()
+	}
 
 	go func() {
-		lrc, trans, timed, err := qqmusic.Lyrics(t.ID)
+		var lrc, trans, timed string
+		var err error
+		if cached, ok := cache.LookupLyrics(t.ID); ok {
+			lrc, trans, timed = cached.LRC, cached.Translation, cached.Timed
+		} else {
+			lrc, trans, timed, err = songLyrics(t.ID)
+			if err == nil {
+				cache.KeepLyrics(t.ID, lrc, trans, timed)
+			}
+		}
 		var lines []lyrics.Line
 		if err == nil {
 			lines = lyrics.Build(lrc, trans, timed)
@@ -700,7 +805,7 @@ func (p *Player) loadSkipping(at, skipped int, play bool, from time.Duration) {
 	}
 	normalize := p.Normalize != nil && p.Normalize() != NormalizeOff
 	go func() {
-		info, s, err := p.open(t, level, normalize)
+		info, s, loudness, err := p.open(t, level, normalize)
 		p.post(func() {
 			if gen != p.gen {
 				if s != nil {
@@ -711,15 +816,16 @@ func (p *Player) loadSkipping(at, skipped int, play bool, from time.Duration) {
 			p.loading = false
 			if err != nil {
 				p.err = err.Error()
-				switch {
-				case err != qqmusic.ErrUnavailable:
-				case t.ProgramID != 0:
-					p.err = "这期节目需要购买才能收听"
-				default:
-					p.err = "这首歌需要 VIP 才能播放"
+				unavailable := errors.Is(err, qqmusic.ErrUnavailable)
+				if unavailable {
+					if t.ProgramID != 0 {
+						p.err = "这期节目需要购买才能收听"
+					} else {
+						p.err = "这首歌需要 VIP 才能播放"
+					}
 				}
-				// Skip what cannot play, unless nothing in the queue can.
-				if skipped+1 < len(p.order) {
+				// Skip only per-track unplayable errors while actively trying to play.
+				if p.playing && unavailable && skipped+1 < len(p.order) {
 					next := at + 1
 					if next >= len(p.order) {
 						next = 0
@@ -761,49 +867,70 @@ func (p *Player) loadSkipping(at, skipped int, play bool, from time.Duration) {
 			}
 			p.sync()
 		})
+		if loudness != nil {
+			if v := <-loudness; v != nil {
+				p.post(func() { p.applyLateLoudness(gen, *v) })
+			}
+		}
 	}()
 }
 
+const loudnessWait = 50 * time.Millisecond
+
 // open opens track t's audio at level: kept in the cache, or else
 // streamed into it, and kept once it has all come in.
-func (p *Player) open(t qqmusic.Track, level string, normalize bool) (*qqmusic.Stream, stream, error) {
+func (p *Player) open(t qqmusic.Track, level string, normalize bool) (*qqmusic.Stream, stream, <-chan *qqmusic.Loudness, error) {
 	// Resolve loudness while the audio opens, including for songs already on
 	// disk. A failed metadata request leaves the stream's gain unchanged.
-	var loudness chan *qqmusic.Loudness
+	var loudness <-chan *qqmusic.Loudness
 	if normalize {
-		loudness = make(chan *qqmusic.Loudness, 1)
+		result := make(chan *qqmusic.Loudness, 1)
+		loudness = result
+		fetch := songLoudness
 		go func() {
-			v, err := songLoudness(t)
+			v, err := fetch(t)
 			if err != nil {
-				loudness <- nil
+				result <- nil
 				return
 			}
-			loudness <- &v
+			result <- &v
 		}()
 	}
 	dl, info, ok := p.Cache.lookup(t.ID, level)
 	if !ok {
 		var err error
-		info, err = qqmusic.SongURL(t.ID, level)
+		info, err = songURL(t.ID, level)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 		dl = p.Cache.download(t.ID, info)
 	}
 	s, err := openStream(dl, t.Duration)
 	if err != nil {
 		dl.Close()
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	if loudness != nil {
-		if v := <-loudness; v != nil {
-			info = withLoudness(info, *v)
+		timer := time.NewTimer(loudnessWait)
+		defer timer.Stop()
+		select {
+		case v := <-loudness:
+			if v != nil {
+				info = withLoudness(info, *v)
+			}
+			loudness = nil
+		case <-timer.C:
 		}
 	}
-	return info, s, nil
+	return info, s, loudness, nil
 }
 
-var songLoudness = qqmusic.SongLoudness
+var (
+	fetchCover   = qqmusic.Fetch
+	songLyrics   = qqmusic.Lyrics
+	songLoudness = qqmusic.SongLoudness
+	songURL      = qqmusic.SongURL
+)
 
 func withLoudness(info *qqmusic.Stream, v qqmusic.Loudness) *qqmusic.Stream {
 	// Downloads keep their own metadata on completion; do not mutate the
@@ -824,14 +951,29 @@ type Session struct {
 	Radio    string          `json:"radio,omitempty"`
 }
 
-// Session returns where playback is, or false with nothing queued.
+// Session returns an independent snapshot, or false with nothing queued.
+// Its slices and metadata may be encoded while the queue changes.
 func (p *Player) Session() (Session, bool) {
 	if p.track == nil || p.at < 0 {
 		return Session{}, false
 	}
+	queue := slices.Clone(p.queue)
+	for i := range queue {
+		t := &queue[i]
+		t.Artists = slices.Clone(t.Artists)
+		t.Alias = slices.Clone(t.Alias)
+		if t.Privilege != nil {
+			privilege := *t.Privilege
+			t.Privilege = &privilege
+		}
+		if t.Volume != nil {
+			volume := *t.Volume
+			t.Volume = &volume
+		}
+	}
 	return Session{
-		Queue:    p.queue,
-		Order:    p.order,
+		Queue:    queue,
+		Order:    slices.Clone(p.order),
 		At:       p.at,
 		Shuffle:  p.shuffle,
 		Repeat:   p.repeat,

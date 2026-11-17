@@ -43,11 +43,12 @@ var AppIcons = []struct{ ID, Label string }{
 	{"menubar", "仅菜单栏"},
 }
 
-// QualityLevels are the stream levels QQ Music names a quality by.
+// QualityLevels maps stream levels to their settings labels.
 var QualityLevels = []struct{ Level, Label string }{
 	{"standard", "标准（128k）"},
 	{"exhigh", "极高（320k）"},
 	{"lossless", "无损（FLAC）"},
+	{"hires", "Hi-Res（FLAC）"},
 }
 
 // VolumeBalances are the ways the app balances loudness.

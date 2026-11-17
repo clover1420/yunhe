@@ -33,6 +33,7 @@ var (
 	IconQueue     = StrokeIcon(`<path d="M16 5H3"/><path d="M11 12H3"/><path d="M11 19H3"/><path d="M21 16V5"/><circle cx="18" cy="16" r="3"/>`)
 	IconLyrics    = StrokeIcon(`<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 9h8"/><path d="M8 13h5"/>`)
 	IconDown      = StrokeIcon(`<path d="m6 9 6 6 6-6"/>`)
+	IconArrowDown = StrokeIcon(`<path d="M12 5v14"/><path d="m18 13-6 6-6-6"/>`)
 	IconBack      = StrokeIcon(`<path d="m15 18-6-6 6-6"/>`)
 	IconForward   = StrokeIcon(`<path d="m9 18 6-6-6-6"/>`)
 	IconNote      = StrokeIcon(`<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>`)
@@ -66,4 +67,5 @@ var (
 	IconSun      = StrokeIcon(`<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>`)
 	IconInfo     = StrokeIcon(`<circle cx="12" cy="12" r="9"/><path d="M12 16v-5M12 8h.01"/>`)
 	IconSignOut  = StrokeIcon(`<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/>`)
+	IconGrid     = StrokeIcon(`<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>`)
 )

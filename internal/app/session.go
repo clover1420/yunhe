@@ -11,17 +11,14 @@ import (
 
 // saveSession keeps where playback is, if it moved on since last kept.
 func (a *app) saveSession() {
+	if a.quitting {
+		defer a.sessionWrites.Wait()
+	}
 	s, ok := a.pl.Session()
 	if !ok {
 		return
 	}
-	raw, err := session.Encode(s)
-	if err != nil || raw == a.savedSession {
-		return
-	}
-	if err := session.Write(raw); err == nil {
-		a.savedSession = raw
-	}
+	a.sessionWrites.Submit(s)
 }
 
 // sessionEvery is how long after playback changed, and how often as it
@@ -61,7 +58,7 @@ func (a *app) restoreSession() {
 	if !ok {
 		return
 	}
-	a.savedSession = raw
+	a.sessionWrites.MarkSaved(raw)
 	qqmusic.RememberTracks(s.Queue)
 	a.pl.Restore(s)
 	if s.Radio != "" && a.pl.Current() != nil {

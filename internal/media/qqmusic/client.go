@@ -1,4 +1,4 @@
-package qqmusic
+﻿package qqmusic
 
 import (
 	"bytes"
@@ -64,6 +64,22 @@ func RememberTracks(tracks []Track) {
 			mediaRegistry.albums[t.Album.ID] = t.Album
 		}
 		for _, a := range t.Artists {
+			if a.ID > 0 && a.MID != "" {
+				mediaRegistry.artists[a.ID] = a
+			}
+		}
+	}
+}
+
+// RememberAlbums restores QQ's album and artist MIDs when loading cached album lists.
+func RememberAlbums(albums []AlbumProfile) {
+	mediaRegistry.Lock()
+	defer mediaRegistry.Unlock()
+	for _, al := range albums {
+		if al.ID > 0 && al.MID != "" {
+			mediaRegistry.albums[al.ID] = al.Album
+		}
+		for _, a := range al.Artists {
 			if a.ID > 0 && a.MID != "" {
 				mediaRegistry.artists[a.ID] = a
 			}
@@ -369,6 +385,7 @@ func parseTrack(o object) Track {
 	t.Size128 = number(file, "size_128mp3")
 	t.Size320 = number(file, "size_320mp3")
 	t.SizeFLAC = number(file, "size_flac")
+	t.SizeHiRes = number(file, "size_hires")
 	if t.Size128 == 0 {
 		t.Size128 = number(o, "size128")
 	}

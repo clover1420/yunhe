@@ -61,6 +61,8 @@ type Deps struct {
 type RestoreState struct {
 	Loading bool
 	Failed  bool
+	Rescan  bool   // the saved session cannot be reused: signing in again is needed
+	Err     string // what went wrong, in the listener's words
 }
 
 // Start begins a login with a new QR code, from QQ or WeChat.
@@ -315,7 +317,10 @@ func menu(c *ui.Context, d Deps, row ui.Element) {
 		prof := d.Profile()
 		if prof == nil {
 			r := d.Restore
-			if r.Failed || r.Loading {
+			if r.Err != "" {
+				ui.Text(c, r.Err).FontSize(12).TextColor(d.Palette.Muted).MaxLines(5).Margin(6, 8)
+			}
+			if (r.Failed || r.Loading) && !r.Rescan {
 				retry := menuItem(c, d.Palette, appui.IconRepeat, "重试恢复登录", "").Disabled(r.Loading)
 				if !r.Loading {
 					retry.AutoFocus()
@@ -326,11 +331,11 @@ func menu(c *ui.Context, d Deps, row ui.Element) {
 				}
 			}
 			label := "登录 QQ 音乐"
-			if r.Failed {
+			if r.Rescan {
 				label = "重新扫码登录"
 			}
 			scan := menuItem(c, d.Palette, appui.IconUser, label, "")
-			if !r.Failed || r.Loading {
+			if !r.Failed || r.Loading || r.Rescan {
 				scan.AutoFocus()
 			}
 			if scan.Clicked() {

@@ -80,17 +80,17 @@ func logSongShelfDiagnostic(t *testing.T, page string, raw []songFeedShelf, pars
 // Saved accounts must receive song shelves with complete tracks from the PC feed.
 func TestLiveRecommendedSongShelves(t *testing.T) {
 	if os.Getenv("LIVE") == "" || os.Getenv("LIVE_SONG_SHELVES_ACCOUNT") != "1" {
-		t.Skip("set LIVE=1 LIVE_SONG_SHELVES_ACCOUNT=1 to read Yunhe's saved account for song recommendations")
+		t.Skip("set LIVE=1 LIVE_SONG_SHELVES_ACCOUNT=1 to read Lilt's saved account for song recommendations")
 	}
 	// Test binaries do not carry the packaged app identifier. Use the same
 	// explicit credential service as the account search integration tests.
 	b, err := mygo.Secrets.Service("dev.amamiya.qqmusic").Get(qqSessionSecret)
 	if err != nil {
-		t.Fatal("cannot read the saved Yunhe session")
+		t.Fatal("cannot read the saved Lilt session")
 	}
 	var s Session
 	if json.Unmarshal(b, &s) != nil || !s.valid() {
-		t.Skip("sign in to Yunhe before testing song recommendations")
+		t.Skip("sign in to Lilt before testing song recommendations")
 	}
 	previous := sessionSnapshot()
 	t.Cleanup(func() { setSession(previous) })

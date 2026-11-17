@@ -8,6 +8,7 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"lilt/internal/core/navigation"
+	"lilt/internal/core/session"
 	"lilt/internal/media/player"
 	"lilt/internal/media/qqmusic"
 	"lilt/internal/ui/base/appui"
@@ -98,6 +99,7 @@ type app struct {
 	charts      []qqmusic.Playlist
 	homeErr     string
 	homeLoading bool
+	homeGen     int       // the home request the answers belong to
 	homeAt      time.Time // when what the home page shows was asked for
 
 	playlists       map[int64]*qqmusic.Playlist
@@ -188,9 +190,9 @@ type app struct {
 	cacheMoveDone, cacheMoveTotal int64
 	updates                       bool // the update plugin is used (useUpdater)
 
-	restored     bool   // playback picked up where it was left
-	savedSession string // the session as last kept
-	sessionDue   bool   // a save of the session is due
+	restored      bool // playback picked up where it was left
+	sessionWrites session.Writer
+	sessionDue    bool // a save of the session is due
 }
 
 // post runs fn on the main thread and redraws both windows. Without a
@@ -309,6 +311,7 @@ func Run() error {
 		a.pl.Normalize = func() string { return a.settings.VolumeBalanceMode() }
 		a.pl.PlaybackFade = func() bool { return a.settings.PlaybackFade }
 		a.pl.Cache = newSongCache(a.settings)
+		a.art.SetDiskCache(a.pl.Cache)
 		a.cacheMoving = a.settings.PendingCacheDir != nil
 		a.pl.Changed = a.playerChanged
 		a.initCaptions()

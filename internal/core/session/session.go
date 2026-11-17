@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"github.com/egoist/mygo"
 
@@ -58,4 +59,68 @@ func Write(raw string) error {
 		return err
 	}
 	return os.Rename(path+".part", path)
+}
+
+// Writer keeps snapshots in the background: one worker writes them in order,
+// replacing queued work with the latest snapshot. It does not need the main
+// thread, so shutdown can wait for it.
+type Writer struct {
+	mu      sync.Mutex
+	pending *player.Session
+	done    chan struct{}
+	saved   string
+}
+
+// Submit queues s to be kept, replacing any snapshot not yet written.
+func (w *Writer) Submit(s player.Session) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.pending = &s
+	if w.done == nil {
+		w.done = make(chan struct{})
+		go w.run()
+	}
+}
+
+// Wait blocks until the queued snapshot, if any, has been written.
+func (w *Writer) Wait() {
+	w.mu.Lock()
+	done := w.done
+	w.mu.Unlock()
+	if done != nil {
+		<-done
+	}
+}
+
+// MarkSaved records raw as the session on disk, so it is not written again.
+func (w *Writer) MarkSaved(raw string) {
+	w.mu.Lock()
+	w.saved = raw
+	w.mu.Unlock()
+}
+
+func (w *Writer) run() {
+	for {
+		w.mu.Lock()
+		job, saved := w.pending, w.saved
+		if job == nil {
+			close(w.done)
+			w.done = nil
+			w.mu.Unlock()
+			return
+		}
+		w.pending = nil
+		w.mu.Unlock()
+
+		b, err := json.Marshal(job)
+		if err != nil || string(b) == saved {
+			continue
+		}
+		if Write(string(b)) != nil {
+			continue
+		}
+		w.mu.Lock()
+		w.saved = string(b)
+		w.mu.Unlock()
+	}
 }

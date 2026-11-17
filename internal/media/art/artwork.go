@@ -51,6 +51,13 @@ type artRequest struct {
 	want Needs
 }
 
+// DiskCache keeps cover data on disk, so covers survive restarts.
+type DiskCache interface {
+	LookupCover(url string) ([]byte, bool)
+	KeepCover(url string, data []byte) bool
+	DropCover(url string)
+}
+
 // Cache loads covers on goroutines and keeps them, up to artLimit
 // bytes: their pixels on the GPU while they show, and on the CPU only
 // their data, which takes a fraction of the pixels. Its methods run on
@@ -65,6 +72,7 @@ type Cache struct {
 	sem     chan struct{}
 	post    func(func())
 	fetch   func(string) ([]byte, error)
+	disk    DiskCache
 	release func(*ui.Bitmap)
 	now     func() time.Time
 	size    int // the bytes the covers in art keep
@@ -86,6 +94,9 @@ func New(post func(func())) *Cache {
 		now: time.Now, limit: artLimit,
 	}
 }
+
+// SetDiskCache keeps covers in disk between runs, or stops doing so when nil.
+func (c *Cache) SetDiskCache(d DiskCache) { c.disk = d }
 
 // Reserve holds a cover offline until Release, as a request being made.
 func (c *Cache) Reserve(url string) { c.busy[url] = &artRequest{} }
@@ -195,15 +206,29 @@ func (c *Cache) load(url string, a *Artwork, need Needs) {
 	if a != nil {
 		data = a.Data
 	}
-	fetch := c.fetch
+	fetch, disk := c.fetch, c.disk
 	go func() {
 		c.sem <- struct{}{}
 		var result *Artwork
 		var err error
 		if a == nil {
-			data, err = fetch(url)
-			if err == nil {
-				result, err = DecodeArt(data, need)
+			if disk != nil {
+				if cached, ok := disk.LookupCover(url); ok {
+					result, err = DecodeArt(cached, need)
+					if err != nil {
+						disk.DropCover(url)
+						result, err = nil, nil
+					}
+				}
+			}
+			if result == nil {
+				data, err = fetch(url)
+				if err == nil {
+					result, err = DecodeArt(data, need)
+					if err == nil && disk != nil {
+						disk.KeepCover(url, data)
+					}
+				}
 			}
 		} else {
 			result, err = deriveArt(data, need)
@@ -392,6 +417,7 @@ func firstWebPFrame(b []byte) []byte {
 // shrink averages img down to n×n pixels.
 func shrink(img image.Image, n int) *image.RGBA {
 	b := img.Bounds()
+	rgba64, _ := img.(image.RGBA64Image)
 	out := image.NewRGBA(image.Rect(0, 0, n, n))
 	for y := range n {
 		for x := range n {
@@ -400,7 +426,13 @@ func shrink(img image.Image, n int) *image.RGBA {
 			var r, g, bl, cnt uint32
 			for yy := y0; yy < max(y1, y0+1); yy += max(1, (y1-y0)/4) {
 				for xx := x0; xx < max(x1, x0+1); xx += max(1, (x1-x0)/4) {
-					cr, cg, cb, _ := img.At(xx, yy).RGBA()
+					var cr, cg, cb uint32
+					if rgba64 != nil {
+						p := rgba64.RGBA64At(xx, yy)
+						cr, cg, cb = uint32(p.R), uint32(p.G), uint32(p.B)
+					} else {
+						cr, cg, cb, _ = img.At(xx, yy).RGBA()
+					}
 					r, g, bl, cnt = cr>>8, cg>>8, cb>>8, cnt+1
 				}
 			}

@@ -1,4 +1,4 @@
-package qqmusic
+﻿package qqmusic
 
 import (
 	"encoding/base64"
