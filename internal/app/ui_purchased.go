@@ -1,6 +1,7 @@
 package app
 
 import (
+	"slices"
 	"time"
 
 	"lilt/internal/media/player"
@@ -184,6 +185,10 @@ func (a *app) morePurchased(tab int, d *purchasedData) {
 	}
 	d.page.loading, d.page.err = true, ""
 	uid, epoch := a.profile.UserID, a.purchasedEpoch
+	var cache *player.Cache
+	if a.pl != nil {
+		cache = a.pl.Cache
+	}
 	offset := len(d.songs) + len(d.albums)
 	go func() {
 		var songs []qqmusic.Track
@@ -209,6 +214,17 @@ func (a *app) morePurchased(tab int, d *purchasedData) {
 			d.albums = append(d.albums, albums...)
 			d.page.loaded, d.page.more = true, more && len(songs)+len(albums) > 0
 			d.syncedAt = time.Now()
+			if cache != nil {
+				if tab == purchasedSongs {
+					snap := slices.Clone(d.songs)
+					hasMore := d.page.more
+					go cache.KeepPurchasedSongs(uid, snap, hasMore)
+				} else {
+					snap := slices.Clone(d.albums)
+					hasMore := d.page.more
+					go cache.KeepPurchasedAlbums(uid, snap, hasMore)
+				}
+			}
 		})
 	}()
 }

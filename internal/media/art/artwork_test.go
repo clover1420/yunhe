@@ -1,12 +1,16 @@
 package art
 
 import (
+	"bytes"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"runtime"
 	"testing"
 	"time"
+
+	"lilt/internal/media/player"
 )
 
 // An animated WebP cover, as some playlists have, shows its first frame,
@@ -187,5 +191,79 @@ func TestArtCacheRetriesFailedCover(t *testing.T) {
 	}
 	if c.size != len(data) {
 		t.Errorf("retry counts %d bytes, want %d", c.size, len(data))
+	}
+}
+
+// Covers kept on disk load again in a later run, without the network.
+func TestArtCacheDiskPersistence(t *testing.T) {
+	data := coverData(t)
+	dir := t.TempDir()
+	disk := player.NewCache(dir, 10<<20)
+
+	posted1 := make(chan func(), 1)
+	c1 := New(func(fn func()) { posted1 <- fn })
+	c1.SetDiskCache(disk)
+	fetches := 0
+	c1.fetch = func(string) ([]byte, error) {
+		fetches++
+		return data, nil
+	}
+	c1.Get("https://example.com/album.jpg", Cover)
+	select {
+	case fn := <-posted1:
+		fn()
+	case <-time.After(2 * time.Second):
+		t.Fatal("first load timed out")
+	}
+	if fetches != 1 {
+		t.Fatalf("fetches = %d, want 1", fetches)
+	}
+	if cached, ok := disk.LookupCover("https://example.com/album.jpg"); !ok || !bytes.Equal(cached, data) {
+		t.Fatalf("cover was not persisted to disk: ok=%v", ok)
+	}
+
+	// Second cache loads from disk even when network fails.
+	posted2 := make(chan func(), 1)
+	c2 := New(func(fn func()) { posted2 <- fn })
+	c2.SetDiskCache(player.NewCache(dir, 10<<20))
+	c2.fetch = func(string) ([]byte, error) {
+		fetches++
+		return nil, errors.New("offline")
+	}
+	c2.Get("https://example.com/album.jpg", Cover)
+	select {
+	case fn := <-posted2:
+		fn()
+	case <-time.After(2 * time.Second):
+		t.Fatal("disk load timed out")
+	}
+	if fetches != 1 {
+		t.Fatalf("disk hit still called fetch (%d times)", fetches)
+	}
+	if a := c2.Get("https://example.com/album.jpg", Cover); a == nil || a.Failed || a.BMP == nil {
+		t.Fatalf("disk cover did not load cleanly: %+v", a)
+	}
+
+	// A corrupt disk file is dropped and fetched from the network again.
+	disk.KeepCover("https://example.com/album.jpg", []byte("not-an-image"))
+	posted3 := make(chan func(), 1)
+	c3 := New(func(fn func()) { posted3 <- fn })
+	c3.SetDiskCache(disk)
+	c3.fetch = func(string) ([]byte, error) {
+		fetches++
+		return data, nil
+	}
+	c3.Get("https://example.com/album.jpg", Cover)
+	select {
+	case fn := <-posted3:
+		fn()
+	case <-time.After(2 * time.Second):
+		t.Fatal("corrupt recovery timed out")
+	}
+	if fetches != 2 {
+		t.Fatalf("fetches after corrupt disk cache = %d, want 2", fetches)
+	}
+	if cached, ok := disk.LookupCover("https://example.com/album.jpg"); !ok || !bytes.Equal(cached, data) {
+		t.Fatalf("corrupt disk cover was not replaced: ok=%v", ok)
 	}
 }
