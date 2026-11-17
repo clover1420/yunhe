@@ -35,6 +35,8 @@ type HomeDeps struct {
 	HomeSkeleton    func(*ui.Context)
 	DailyCard       func(*ui.Context, time.Time)
 	SongShelves     func(*ui.Context, string, int, int)
+	// SquareEntry links to the playlist square, at the head of the featured lists.
+	SquareEntry func(*ui.Context)
 }
 
 // HomePage is what the app opens on: the day's card, songs picked for the
@@ -87,7 +89,12 @@ func HomePage(c *ui.Context, d HomeDeps) {
 
 		d.SongShelves(c, "more-song-shelves", 1, 3)
 
-		Section(c, "精选歌单")
+		ui.Row(c).Margin(34, 0, 14, 0).Gap(8).AlignItems(ui.Center).Children(func() {
+			ui.Text(c, "精选歌单").FontSize(19).FontWeight(700).LetterSpacing(-0.3).Grow(1)
+			if d.SquareEntry != nil {
+				d.SquareEntry(c)
+			}
+		})
 		ui.Grid(c).Columns(Columns(c, d.Sidebar, 168)).GapX(20).GapY(28).Children(func() {
 			for i := range d.Featured {
 				PlaylistCard(c.Key(d.Featured[i].ID), d.Card, &d.Featured[i])

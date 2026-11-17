@@ -21,6 +21,7 @@ const (
 	Purchased
 	Settings
 	SongShelf
+	Square
 )
 
 // Route is the page shown, and what it shows.

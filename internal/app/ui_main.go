@@ -29,7 +29,7 @@ func (a *app) view(c *ui.Context) {
 	root := ui.Box(c).Fill()
 	// The settings, a pane over the page, keep Space for their own controls.
 	settingsFocused := a.settingsOpen || a.route.Page == pageSettings && !a.nowPlaying && a.settingsPane.FocusWithin(c)
-	if !c.Focused(a.searchBox) && !settingsFocused && !a.lyricsSizeOpen && !a.lyricsSizeTrigger.Focused(c) {
+	if !c.Focused(a.searchBox) && !settingsFocused && !a.lyricsSizeOpen && !a.lyricsSizeTrigger.Focused(c) && !a.square.tagsOpen && !a.square.tagsTrigger.Focused(c) {
 		// Space plays and pauses wherever the focus is, as in Music. On
 		// the container around everything, it comes before a button the
 		// pointer focused, which would take Space as a click; on the
@@ -48,6 +48,9 @@ func (a *app) view(c *ui.Context) {
 	}
 	if !npOpen || a.npPane != paneLyrics {
 		a.lyricsSizeOpen = false
+	}
+	if a.route.Page != pageSquare || npOpen {
+		a.square.tagsOpen = false
 	}
 	root.Children(func() {
 		page := ui.Row(c).Fill().AlignItems(ui.Stretch)
@@ -131,6 +134,9 @@ func (a *app) open(r route) {
 // show shows the page of r.
 func (a *app) show(r route) {
 	a.queueOpen = false
+	if a.route.Page == pageSquare && r.Page != pageSquare {
+		a.square.tagsOpen = false
+	}
 	a.pageDir = pageLevel(r) - pageLevel(a.route)
 	// A tab of the page open is not another page: it changes in place, so
 	// that the control chosen stays where the pointer left it.
@@ -168,6 +174,8 @@ func (a *app) load(r route) {
 		a.loadPurchased(r.Tab, false)
 	case pageSettings:
 		a.measureCache()
+	case pageSquare:
+		a.loadSquare()
 	}
 }
 
@@ -213,7 +221,7 @@ func (a *app) sidebar(c *ui.Context) {
 		a.searchField(c)
 
 		ui.Scroll(c.Key("nav")).TrackScroll(&a.navScroll).Grow(1).Margin(0, -6).Padding(0, 6).Gap(4).Children(func() {
-			a.navItem(c, iconHome, "为你推荐", route{Page: pageHome})
+			a.navItem(c, iconHome, "首页", route{Page: pageHome})
 			a.navItem(c, iconDaily, "每日推荐", route{Page: pageDaily})
 			a.navItem(c, iconRadio, "电台", route{Page: pageFM})
 			a.navItem(c, iconCharts, "排行榜", route{Page: pageCharts})
@@ -399,6 +407,8 @@ func (a *app) content(c *ui.Context) {
 			a.settingsPage(c)
 		case pageSongShelf:
 			a.songShelfPage(c)
+		case pageSquare:
+			a.squarePage(c)
 		}
 	})
 }

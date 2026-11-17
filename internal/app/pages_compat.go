@@ -723,6 +723,7 @@ func (a *app) homeDeps() pages.HomeDeps {
 		SongShelves: func(c *ui.Context, key string, from, to int) {
 			a.songShelfSection(c.Key(key), from, to)
 		},
+		SquareEntry: a.squareEntry,
 	}
 }
 

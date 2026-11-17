@@ -32,6 +32,7 @@ const (
 	pagePurchased          = navigation.Purchased
 	pageSettings           = navigation.Settings
 	pageSongShelf          = navigation.SongShelf
+	pageSquare             = navigation.Square
 )
 
 // pageScrollState belongs to one route; MyGo's list and scroll state keep stable identities.
@@ -101,6 +102,7 @@ type app struct {
 	homeLoading bool
 	homeGen     int       // the home request the answers belong to
 	homeAt      time.Time // when what the home page shows was asked for
+	square      squareState
 
 	playlists       map[int64]*qqmusic.Playlist
 	loadingPl       map[int64]bool
