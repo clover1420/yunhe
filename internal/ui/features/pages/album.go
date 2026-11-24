@@ -1,7 +1,6 @@
 package pages
 
 import (
-	"fmt"
 	"strings"
 	"time"
 
@@ -33,6 +32,7 @@ type AlbumDeps struct {
 	Skeleton    func(*ui.Context)
 	Tracks      func(*ui.Context, []qqmusic.Track, func(*ui.Context))
 	Link        func(*ui.Context, string, ui.Color, ui.Color, navigation.Route)
+	MetaRow     func(*ui.Context, *qqmusic.AlbumProfile)
 	Description func(*ui.Context, string)
 	Play        func([]qqmusic.Track)
 	Like        func(*ui.Context, *qqmusic.AlbumProfile)
@@ -64,19 +64,7 @@ func AlbumHeader(c *ui.Context, d AlbumDeps, al *qqmusic.AlbumProfile) {
 		ui.Column(c).Grow(1).Shrink(1).MinWidth(0).Gap(8).Children(func() {
 			ui.Text(c, "专辑").FontSize(12).FontWeight(600).TextColor(p.Accent)
 			ui.Text(c, al.Name).FontSize(30).FontWeight(800).LetterSpacing(-0.6).MaxLines(2).LineHeight(1.2)
-			ui.RichText(c).FontSize(13).TextColor(p.Muted).Children(func() {
-				for i, ar := range al.Artists {
-					if i > 0 {
-						ui.Text(c, ", ")
-					}
-					d.Link(c.Key(i), ar.Name, p.Muted, p.Text, navigation.Route{Page: navigation.Artist, ID: ar.ID})
-				}
-				meta := fmt.Sprintf(" · %d 首", len(al.Songs))
-				if al.PublishTime > 0 {
-					meta = " · " + time.UnixMilli(al.PublishTime).Format("2006-01-02") + meta
-				}
-				ui.Text(c, meta)
-			})
+			d.MetaRow(c, al)
 			d.Description(c, al.Description)
 			ui.Row(c).Gap(10).Margin(10, 0, 0, 0).Children(func() {
 				if appui.PillButton(c.Key("play"), appui.IconPlay, "播放", p.Accent, p.OnAccent).Clicked() {

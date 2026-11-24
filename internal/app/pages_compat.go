@@ -655,6 +655,7 @@ func (a *app) albumDeps() pages.AlbumDeps {
 			a.trackRows(c, tracks, false, header)
 		},
 		Link:        a.link,
+		MetaRow:     a.albumMetaRow,
 		Description: a.collectionDescription,
 		Play: func(songs []qqmusic.Track) {
 			if a.pl.Shuffle() {
