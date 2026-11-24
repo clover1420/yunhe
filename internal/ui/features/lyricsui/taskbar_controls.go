@@ -38,6 +38,19 @@ func (d *Taskbar) SetLyricsMaterial(material string) {
 	d.Redraw()
 }
 
+// SetLyricsCover shows or hides the album artwork beside the taskbar lyrics,
+// keeping the choice and rebuilding the cover window.
+func (d *Taskbar) SetLyricsCover(show bool) {
+	d.Settings.TaskbarLyricsHideCover = !show
+	if d.SaveSettings != nil {
+		d.SaveSettings()
+	}
+	if d.Visible {
+		d.SyncCoverWindow()
+	}
+	d.Redraw()
+}
+
 // Only the cover owns an interactive taskbar rectangle; the lyric host stays
 // transparent to input, including clicks sent to Explorer's other threads.
 func (d *Taskbar) SyncCoverWindow() {
@@ -45,7 +58,7 @@ func (d *Taskbar) SyncCoverWindow() {
 		return
 	}
 	tr := d.Player.Current()
-	if !d.Visible || !d.Settings.TaskbarLyrics || d.Win == nil || d.Win.IsDestroyed() || tr == nil || tr.Album.PicURL == "" {
+	if !d.Visible || !d.Settings.TaskbarLyrics || !d.Settings.ShowTaskbarLyricsCover() || d.Win == nil || d.Win.IsDestroyed() || tr == nil || tr.Album.PicURL == "" {
 		d.DestroyCoverWindow()
 		return
 	}
@@ -120,9 +133,13 @@ func (d *Taskbar) ToggleControls() {
 		return
 	}
 	bounds := d.CoverWin.Bounds()
+	placement := mygo.PlacementTopStart
+	if d.Placement.RightAligned {
+		placement = mygo.PlacementTopEnd
+	}
 	w := mygo.NewFlyout(mygo.FlyoutOptions{
 		Parent: d.CoverWin, Anchor: mygo.Rectangle{Width: bounds.Width, Height: bounds.Height},
-		Placement: mygo.PlacementTopStart, Gap: 16, Width: TaskbarControlsWidth, Height: TaskbarControlsHeight,
+		Placement: placement, Gap: 16, Width: TaskbarControlsWidth, Height: TaskbarControlsHeight,
 		Focusable: true, Shadow: true, Hidden: true, Vibrancy: TaskbarControlsVibrancy(d.Settings), Content: ui.View(d.ControlsView),
 	})
 	// Windows can enable a backdrop later only when the window was created

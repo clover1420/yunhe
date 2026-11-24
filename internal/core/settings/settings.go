@@ -29,6 +29,8 @@ type Settings struct {
 	DesktopLyricsColor string `json:"desktopLyricsColor,omitempty"`
 	// TaskbarLyrics embeds a separate compact lyric view in the Windows taskbar.
 	TaskbarLyrics bool `json:"taskbarLyrics,omitempty"`
+	// TaskbarLyricsHideCover hides the album artwork beside taskbar lyrics.
+	TaskbarLyricsHideCover bool `json:"taskbarLyricsHideCover,omitempty"`
 	// TaskbarLyricsMaterial selects white or acrylic (also when empty) for the song panel.
 	TaskbarLyricsMaterial string `json:"taskbarLyricsMaterial,omitempty"`
 	// LyricsMode keeps the preferred location independently of its enabled state.
@@ -47,7 +49,7 @@ type Settings struct {
 	Quality string `json:"quality"`
 	// Appearance is light, dark, or system to follow the system.
 	Appearance string `json:"appearance"`
-	// SidebarMaterial selects mica or acrylic (also when empty) on Windows.
+	// SidebarMaterial selects solid or the platform's available translucent materials.
 	SidebarMaterial string `json:"sidebarMaterial,omitempty"`
 	// AccentCover takes the accent from the cover playing, else the app's red.
 	AccentCover bool `json:"accentCover"`
@@ -218,16 +220,26 @@ func (s Settings) Save() error {
 	return os.WriteFile(path, b, 0o600)
 }
 
+// ShowTaskbarLyricsCover reports whether taskbar lyrics show the album artwork.
+func (s Settings) ShowTaskbarLyricsCover() bool {
+	return !s.TaskbarLyricsHideCover
+}
+
 // SidebarVibrancy keeps the Windows material choice across launches while
 // preserving the platform's sidebar material elsewhere.
 func (s Settings) SidebarVibrancy() mygo.Vibrancy {
+	if s.SidebarMaterial == "solid" && (runtime.GOOS == "windows" || runtime.GOOS == "darwin") {
+		return mygo.VibrancyNone
+	}
 	if runtime.GOOS != "windows" {
 		return mygo.VibrancySidebar
 	}
-	if s.SidebarMaterial == "mica" {
+	switch s.SidebarMaterial {
+	case "mica":
 		return mygo.VibrancyMica
+	default:
+		return mygo.VibrancyAcrylic
 	}
-	return mygo.VibrancyAcrylic
 }
 
 // ApplyAppearance makes the windows light, dark, or follow the system.

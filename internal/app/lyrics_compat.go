@@ -51,6 +51,12 @@ func (a *app) setTaskbarLyricsMaterial(material string) {
 	}
 }
 
+func (a *app) setTaskbarLyricsCover(show bool) {
+	if a.taskbarLyrics != nil {
+		a.taskbarLyrics.SetLyricsCover(show)
+	}
+}
+
 func (a *app) setDesktopLyricsEnabled(enabled bool) {
 	if !supportsDesktopLyrics() {
 		return

@@ -61,6 +61,7 @@ func (a *app) settingsDeps() settingsui.Deps {
 		SetLyricsMode:            a.setLyricsMode,
 		TaskbarLyrics:            supportsTaskbarLyrics() && lyricsMode(a.settings) == "taskbar",
 		SetTaskbarLyricsMaterial: a.setTaskbarLyricsMaterial,
+		SetTaskbarLyricsCover:    a.setTaskbarLyricsCover,
 		Fonts:                    a.settingsFonts,
 		LoadFont:                 a.loadFont,
 		CheckForUpdates:          checkForUpdates,

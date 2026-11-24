@@ -63,9 +63,12 @@ func (a *app) view(c *ui.Context) {
 				return
 			}
 			side := ui.Column(c).Width(sidebarWidth)
-			if !c.Vibrancy() {
+			switch {
+			case a.settings.SidebarVibrancy() == mygo.VibrancyNone:
+				side.Background(neutral(p.Dark, 3))
+			case !c.Vibrancy():
 				side.Background(p.Sidebar)
-			} else if a.acrylicSidebar(c) {
+			case a.acrylicSidebar(c):
 				// Neutral frost quiets the desktop's color while leaving the
 				// system acrylic visible beneath.
 				side.Background(neutral(p.Dark, 2).Alpha(0.5))
@@ -264,12 +267,19 @@ func (a *app) navItem(c *ui.Context, icon *ui.SVG, label string, r route) {
 // the row a press darkens, as Cloudy's sidebar marks the page open.
 func (a *app) styleSidebarItem(c *ui.Context, b ui.Element, selected bool) {
 	p := a.pal
+	solid := a.settings.SidebarVibrancy() == mygo.VibrancyNone
 	bg := ui.Transparent
 	switch {
+	case selected && solid:
+		bg = neutral(p.Dark, 5)
 	case selected:
 		bg = p.Press
 	case b.Hovered():
-		bg = p.Hover
+		if solid {
+			bg = neutral(p.Dark, 4)
+		} else {
+			bg = p.Hover
+		}
 	}
 	b.Selected(selected).
 		Background(b.AnimateColor("bg", bg, ui.Animation{Duration: 120 * time.Millisecond}))

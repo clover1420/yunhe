@@ -14,7 +14,11 @@ func TaskbarCoverPlacement(p Placement) Placement {
 	if size <= 0 || left+size > p.Width {
 		return Placement{}
 	}
-	p.X += left
+	if p.RightAligned {
+		p.X += p.Width - left - size
+	} else {
+		p.X += left
+	}
 	p.Y += int(math.Round(float64(p.Height-size) / 2))
 	p.Width, p.Height = size, size
 	return p

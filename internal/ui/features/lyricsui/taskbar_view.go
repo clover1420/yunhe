@@ -23,11 +23,12 @@ func (d *Taskbar) View(c *ui.Context) {
 	position := d.Player.Position()
 	content := d.Content(position)
 	width, height := c.Size()
+	rightAligned := d.Placement.RightAligned
 	left := float32(TaskbarCoverInset)
-	if url := d.Player.Current().Album.PicURL; url != "" {
+	if url := d.Player.Current().Album.PicURL; url != "" && d.Settings.ShowTaskbarLyricsCover() {
 		size := min(float32(34), max(1, height-4))
 		if d.CoverWin == nil {
-			d.Cover(c, url, size, height)
+			d.Cover(c, url, size, height, rightAligned)
 		}
 		left += size + TaskbarCoverGap
 	}
@@ -66,12 +67,15 @@ func (d *Taskbar) View(c *ui.Context) {
 		}
 		root.Draw(func(p *ui.Painter, r ui.Rect) {
 			viewport := ui.Rect{X: r.X + left, Y: r.Y, W: available, H: r.H}
+			if rightAligned {
+				viewport.X = r.X + float32(TaskbarCoverInset)
+			}
 			// Move whole blocks through a fixed viewport, keeping the two lines
 			// together and preventing outgoing text from drawing over the cover.
 			if offset > 0 {
-				previous.draw(p, viewport, d.Dark, offset-height)
+				previous.draw(p, viewport, d.Dark, offset-height, rightAligned)
 			}
-			layout.draw(p, viewport, d.Dark, offset)
+			layout.draw(p, viewport, d.Dark, offset, rightAligned)
 		})
 		if playing {
 			next := desktopLyricWake(content, position)
@@ -93,17 +97,22 @@ func (d *Taskbar) View(c *ui.Context) {
 
 // Request the current album directly from the shared cache. A pending new cover
 // uses its own placeholder rather than keeping the previous song's artwork.
-func (d *Taskbar) Cover(c *ui.Context, url string, size, height float32) {
-	cover := ui.ButtonBase(c.Key("taskbar-cover")).Absolute().Left(TaskbarCoverInset).Top((height-size)/2).
+func (d *Taskbar) Cover(c *ui.Context, url string, size, height float32, rightAligned bool) {
+	cover := ui.ButtonBase(c.Key("taskbar-cover")).Absolute().Top((height-size)/2).
 		Size(size, size).Radius(min(6, size/2)).Background(theme.Neutral(d.Dark, 3)).Center().
 		Label("歌曲控制").Cursor(ui.CursorPointer).OnClick(d.ToggleControls)
+	if rightAligned {
+		cover.Right(TaskbarCoverInset)
+	} else {
+		cover.Left(TaskbarCoverInset)
+	}
 	d.CoverButton(c, cover, url, size)
 }
 
 func (d *Taskbar) CoverView(c *ui.Context) {
 	c.Root().Background(ui.Transparent)
 	tr := d.Player.Current()
-	if !d.Settings.TaskbarLyrics || !d.Visible || tr == nil || tr.Album.PicURL == "" {
+	if !d.Settings.TaskbarLyrics || !d.Settings.ShowTaskbarLyricsCover() || !d.Visible || tr == nil || tr.Album.PicURL == "" {
 		return
 	}
 	w, h := c.Size()
@@ -290,12 +299,24 @@ func taskbarLyricOffset(width, available, progressX float32) float32 {
 	return -min(width-available, max(0, progressX-available*0.55))
 }
 
-func (layout taskbarLyricLayout) draw(p *ui.Painter, r ui.Rect, dark bool, offsetY float32) {
+// Right-aligned taskbars anchor short lines to the notification area and keep
+// the sung word inside the viewport when the line is wider than it.
+func taskbarLyricDrawX(x, available, width, progressX float32, rightAligned bool) float32 {
+	if width <= available {
+		if rightAligned {
+			return x + available - width
+		}
+		return x
+	}
+	return x + taskbarLyricOffset(width, available, progressX)
+}
+
+func (layout taskbarLyricLayout) draw(p *ui.Painter, r ui.Rect, dark bool, offsetY float32, rightAligned bool) {
 	if layout.text == nil {
 		return
 	}
 	y := r.Y + (r.H-layout.height)/2 + offsetY
-	x := r.X + taskbarLyricOffset(layout.width, r.W, layout.progressX)
+	x := taskbarLyricDrawX(r.X, r.W, layout.width, layout.progressX, rightAligned)
 	outline := theme.Neutral(dark, 1).Alpha(0.8)
 	p.Clip(r, 0, func() {
 		// A fine contrasting edge remains legible on translucent taskbars.
@@ -314,7 +335,7 @@ func (layout taskbarLyricLayout) draw(p *ui.Painter, r ui.Rect, dark bool, offse
 				}
 				color = color.Alpha(alpha)
 			}
-			x = r.X + taskbarLyricOffset(w, r.W, progressX)
+			x = taskbarLyricDrawX(r.X, r.W, w, progressX, rightAligned)
 			y += layout.originalHeight + 1
 			for _, offset := range []ui.Point{{X: -0.5}, {X: 0.5}, {Y: -0.5}, {Y: 0.5}} {
 				p.TextLayout(layout.secondaryOutline, x+offset.X, y+offset.Y, outline)

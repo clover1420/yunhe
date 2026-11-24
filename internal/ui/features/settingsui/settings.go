@@ -127,6 +127,7 @@ type Deps struct {
 	RefreshGain              func()
 	SetLyricsMode            func(string)
 	SetTaskbarLyricsMaterial func(string)
+	SetTaskbarLyricsCover    func(bool)
 	Fonts                    func() []Font
 	LoadFont                 func()
 
@@ -419,14 +420,22 @@ func content(c *ui.Context, d Deps) {
 				d.Changed()
 			}
 		})
-		if runtime.GOOS == "windows" {
+		if runtime.GOOS != "linux" {
 			row("侧边栏材质", "", func() {
-				i := 0
-				if s.SidebarVibrancy() == mygo.VibrancyMica {
-					i = 1
+				modes := []string{"acrylic", "mica", "solid"}
+				labels := []string{"亚克力", "Mica", "纯色"}
+				if runtime.GOOS == "darwin" {
+					modes = []string{"sidebar", "solid"}
+					labels = []string{"系统材质", "纯色"}
 				}
-				if appui.Segmented(c.Key("sidebar-material"), &i, "亚克力", "Mica") {
-					s.SidebarMaterial = []string{"acrylic", "mica"}[i]
+				i := 0
+				for k, mode := range modes {
+					if mode == s.SidebarMaterial {
+						i = k
+					}
+				}
+				if appui.Segmented(c.Key("sidebar-material"), &i, labels...) {
+					s.SidebarMaterial = modes[i]
 					if d.Window != nil {
 						d.Window.SetVibrancy(s.SidebarVibrancy())
 					}
@@ -551,6 +560,12 @@ func content(c *ui.Context, d Deps) {
 				if appui.Segmented(c.Key("taskbar-lyrics-material"), &i, "亚克力", "白色") {
 					d.SetTaskbarLyricsMaterial([]string{lyricsui.TaskbarMaterialAcrylic, lyricsui.TaskbarMaterialWhite}[i])
 				}
+			})
+			row("任务栏歌词封面", "显示专辑封面，点击可展开歌曲控制", func() {
+				show := !s.TaskbarLyricsHideCover
+				ui.Switch(c.Key("taskbar-lyrics-cover"), &show).Label("显示任务栏歌词封面").OnClick(func() {
+					d.SetTaskbarLyricsCover(show)
+				})
 			})
 		}
 		row("进度条特效", "", func() {

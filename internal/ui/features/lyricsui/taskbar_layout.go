@@ -15,6 +15,9 @@ type Placement struct {
 	X, Y, Width, Height int
 	DPI                 uint32
 	Dark                bool
+	// RightAligned anchors the lyrics beside the notification area on
+	// left-aligned taskbars and mirrors the cover to the right edge.
+	RightAligned bool
 }
 
 type Interval struct{ start, end int }
@@ -48,4 +51,32 @@ func TaskbarFreeSpace(length, requested, minimum, gap int, occupied []Interval) 
 		return cursor, width
 	}
 	return 0, 0
+}
+
+// Right-anchored placement mirrors the taskbar so the same scan picks the
+// rightmost usable gap beside the notification area, then mirrors it back.
+func TaskbarFreeSpaceRight(length, requested, minimum, gap int, occupied []Interval) (int, int) {
+	mirrored := make([]Interval, len(occupied))
+	for i, item := range occupied {
+		mirrored[i] = Interval{length - item.end, length - item.start}
+	}
+	x, width := TaskbarFreeSpace(length, requested, minimum, gap, mirrored)
+	if width == 0 {
+		return 0, 0
+	}
+	return length - x - width, width
+}
+
+// Centered taskbars strictly stay on the left side and hide when it fills up;
+// left-aligned taskbars anchor beside the right notification area so opening
+// and closing apps does not bounce the lyrics across the taskbar.
+func TaskbarPlacementSpace(length, requested, minimum, gap int, occupied []Interval, leftTaskbar bool) (int, int) {
+	if leftTaskbar {
+		return TaskbarFreeSpaceRight(length, requested, minimum, gap, occupied)
+	}
+	x, width := TaskbarFreeSpace(length, requested, minimum, gap, occupied)
+	if width == 0 || x >= length/2 {
+		return 0, 0
+	}
+	return x, width
 }

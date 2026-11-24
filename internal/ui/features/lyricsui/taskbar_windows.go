@@ -160,12 +160,29 @@ func readTaskbarLyricsPlacement() (Placement, error) {
 	if err != nil {
 		return Placement{}, err
 	}
-	x, width := TaskbarFreeSpace(int(client.right), 280*int(dpi)/96, 100*int(dpi)/96, TaskbarEdgeGap*int(dpi)/96, occupied)
+	leftTaskbar := taskbarUsesLeftAlignment(version.build)
+	x, width := TaskbarPlacementSpace(int(client.right), 280*int(dpi)/96, 100*int(dpi)/96, TaskbarEdgeGap*int(dpi)/96, occupied, leftTaskbar)
 	if width == 0 {
 		return Placement{}, fmt.Errorf("taskbar has insufficient free space")
 	}
 	height := min(int(client.bottom), 42*int(dpi)/96)
-	return Placement{Parent: parent, Taskbar: root, X: x, Y: (int(client.bottom) - height) / 2, Width: width, Height: height, DPI: uint32(dpi), Dark: taskbarUsesDarkTheme()}, nil
+	return Placement{Parent: parent, Taskbar: root, X: x, Y: (int(client.bottom) - height) / 2, Width: width, Height: height, DPI: uint32(dpi), Dark: taskbarUsesDarkTheme(), RightAligned: leftTaskbar}, nil
+}
+
+// Windows 11 lets the taskbar align its app icons left or center. Center keeps
+// the lyrics on the left; left alignment anchors them beside the notification
+// area so the app icons' width does not move them.
+func taskbarUsesLeftAlignment(build uint32) bool {
+	if build < 22000 {
+		return true
+	}
+	path, _ := syscall.UTF16PtrFromString(`Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced`)
+	name, _ := syscall.UTF16PtrFromString("TaskbarAl")
+	var value uint32
+	size := uint32(4)
+	key := int32(-2147483647)
+	r, _, _ := syscall.NewLazyDLL("advapi32.dll").NewProc("RegGetValueW").Call(uintptr(key), uintptr(unsafe.Pointer(path)), uintptr(unsafe.Pointer(name)), 0x10, 0, uintptr(unsafe.Pointer(&value)), uintptr(unsafe.Pointer(&size)))
+	return r == 0 && value == 0
 }
 
 func taskbarUsesDarkTheme() bool {
