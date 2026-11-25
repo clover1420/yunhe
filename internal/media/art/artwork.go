@@ -17,8 +17,6 @@ import (
 	_ "golang.org/x/image/webp"
 
 	"lilt/internal/media/qqmusic"
-
-	"lilt/internal/ui/base/theme"
 )
 
 // Artwork is a cover, decoded and ready to draw, with what the player
@@ -433,7 +431,7 @@ func shrink(img image.Image, n int) *image.RGBA {
 					} else {
 						cr, cg, cb, _ = img.At(xx, yy).RGBA()
 					}
-					r, g, bl, cnt = cr>>8, cg>>8, cb>>8, cnt+1
+					r, g, bl, cnt = r+(cr>>8), g+(cg>>8), bl+(cb>>8), cnt+1
 				}
 			}
 			out.SetRGBA(x, y, color.RGBA{uint8(r / cnt), uint8(g / cnt), uint8(bl / cnt), 255})
@@ -442,38 +440,290 @@ func shrink(img image.Image, n int) *image.RGBA {
 	return out
 }
 
-// DominantColor returns the most vivid color that covers much of img: the
-// hue that its saturated pixels share most, at their mean.
+// dominantSize is the cover's edge after shrinking: big enough for k-means to
+// tell its regions apart, small enough to keep loading quick.
+const dominantSize = 32
+
+const (
+	// dominantClusters is how many colors k-means separates before merging.
+	dominantClusters = 8
+	// dominantIterations bounds the k-means refinement.
+	dominantIterations = 24
+	// mergeDistance is how close, in CIE76 ΔE, two clusters must be to merge.
+	mergeDistance = 12
+
+	// Android Palette's filter drops near-black, near-white and gray pixels,
+	// which say nothing about a cover's color.
+	filterMinLightness  = 0.15
+	filterMaxLightness  = 0.95
+	filterMinSaturation = 0.10
+
+	// Palette's HSL scoring: how much a swatch's saturation, lightness and
+	// population count toward being the cover's color.
+	targetSaturation = 0.5
+	targetLightness  = 0.5
+	weightSaturation = 0.26
+	weightLightness  = 0.30
+	weightPopulation = 0.24
+)
+
+// labColor is a color in CIE Lab, where distance matches how different two
+// colors look.
+type labColor struct{ l, a, b float32 }
+
+// dominantSwatch is a cluster of the cover: its center and how many pixels it
+// covers.
+type dominantSwatch struct {
+	lab        labColor
+	population float32
+}
+
+// DominantColor returns the color a cover is best recognized by. Its pixels
+// are filtered as Android's Palette filters them, clustered with k-means in
+// CIE Lab, clusters closer than ΔE 12 merged, and the rest scored by Palette's
+// HSL model: saturation and lightness near half, weighted by population.
 func DominantColor(img image.Image) ui.Color {
-	small := shrink(img, 24)
-	const buckets = 18
-	var weight [buckets]float64
-	var sum [buckets][3]float64
+	small := shrink(img, dominantSize)
+	pixels := make([]labColor, 0, len(small.Pix)/4)
 	var gray [3]float64
+	n := float64(len(small.Pix) / 4)
 	for i := 0; i < len(small.Pix); i += 4 {
 		r, g, b := float64(small.Pix[i])/255, float64(small.Pix[i+1])/255, float64(small.Pix[i+2])/255
-		h, s, v := theme.HSV(r, g, b)
 		gray[0], gray[1], gray[2] = gray[0]+r, gray[1]+g, gray[2]+b
-		w := s * s * v
-		if s < 0.15 || v < 0.15 {
+		_, s, l := rgbToHSL(float32(r), float32(g), float32(b))
+		if l < filterMinLightness || l > filterMaxLightness || s < filterMinSaturation {
 			continue
 		}
-		k := int(h/360*buckets) % buckets
-		weight[k] += w
-		sum[k][0], sum[k][1], sum[k][2] = sum[k][0]+r*w, sum[k][1]+g*w, sum[k][2]+b*w
+		pixels = append(pixels, rgbToLab(float32(r), float32(g), float32(b)))
 	}
-	best := 0
-	for k := range weight {
-		if weight[k] > weight[best] {
-			best = k
-		}
-	}
-	if weight[best] < 2 {
-		n := float64(len(small.Pix) / 4)
+	// A cover of only extremes and grays has no color to take.
+	if float64(len(pixels)) < n/10 {
 		return ui.RGB(uint8(gray[0]/n*255), uint8(gray[1]/n*255), uint8(gray[2]/n*255))
 	}
-	w := weight[best]
-	return ui.RGB(uint8(sum[best][0]/w*255), uint8(sum[best][1]/w*255), uint8(sum[best][2]/w*255))
+	swatches := dominantSwatches(pixels)
+	var best dominantSwatch
+	bestScore, maxPopulation := float32(-1), float32(0)
+	for _, sw := range swatches {
+		maxPopulation = max(maxPopulation, sw.population)
+	}
+	for _, sw := range swatches {
+		if score := paletteScore(sw, maxPopulation); score > bestScore {
+			best, bestScore = sw, score
+		}
+	}
+	r, g, b := labToRGB(best.lab)
+	return ui.RGB(uint8(r*255+.5), uint8(g*255+.5), uint8(b*255+.5))
+}
+
+// dominantSwatches clusters the pixels in Lab and merges the clusters that
+// ended up close, so one region split in two does not count twice.
+func dominantSwatches(pixels []labColor) []dominantSwatch {
+	centers := labSeeds(pixels, dominantClusters)
+	counts := make([]float32, len(centers))
+	for range dominantIterations {
+		sums := make([]labColor, len(centers))
+		counts = make([]float32, len(centers))
+		for _, p := range pixels {
+			k := nearestLab(centers, p)
+			sums[k] = labColor{sums[k].l + p.l, sums[k].a + p.a, sums[k].b + p.b}
+			counts[k]++
+		}
+		next := make([]labColor, 0, len(centers))
+		nextCounts := make([]float32, 0, len(centers))
+		settled := true
+		for k, c := range centers {
+			if counts[k] == 0 {
+				continue
+			}
+			moved := labColor{sums[k].l / counts[k], sums[k].a / counts[k], sums[k].b / counts[k]}
+			if labDistanceSquared(moved, c) > 0.25*0.25 {
+				settled = false
+			}
+			next = append(next, moved)
+			nextCounts = append(nextCounts, counts[k])
+		}
+		centers, counts = next, nextCounts
+		if settled {
+			break
+		}
+	}
+	swatches := make([]dominantSwatch, len(centers))
+	for i, c := range centers {
+		swatches[i] = dominantSwatch{c, counts[i]}
+	}
+	return mergeSwatches(swatches)
+}
+
+// mergeSwatches merges clusters within ΔE mergeDistance of a heavier one,
+// heaviest first, so a split region becomes one swatch of its whole weight.
+func mergeSwatches(swatches []dominantSwatch) []dominantSwatch {
+	slices.SortStableFunc(swatches, func(x, y dominantSwatch) int {
+		switch {
+		case x.population > y.population:
+			return -1
+		case x.population < y.population:
+			return 1
+		}
+		return 0
+	})
+	merged := make([]dominantSwatch, 0, len(swatches))
+	for _, sw := range swatches {
+		mergeAt := -1
+		for i := range merged {
+			if labDistanceSquared(merged[i].lab, sw.lab) < mergeDistance*mergeDistance {
+				mergeAt = i
+				break
+			}
+		}
+		if mergeAt < 0 {
+			merged = append(merged, sw)
+			continue
+		}
+		p := merged[mergeAt].population + sw.population
+		merged[mergeAt].lab = labColor{
+			(merged[mergeAt].lab.l*merged[mergeAt].population + sw.lab.l*sw.population) / p,
+			(merged[mergeAt].lab.a*merged[mergeAt].population + sw.lab.a*sw.population) / p,
+			(merged[mergeAt].lab.b*merged[mergeAt].population + sw.lab.b*sw.population) / p,
+		}
+		merged[mergeAt].population = p
+	}
+	return merged
+}
+
+// paletteScore is Palette's score of a swatch: saturation and lightness near
+// the middle of their range, plus the swatch's share of the cover's pixels.
+func paletteScore(sw dominantSwatch, maxPopulation float32) float32 {
+	r, g, b := labToRGB(sw.lab)
+	_, s, l := rgbToHSL(r, g, b)
+	return weightSaturation*(1-abs32(targetSaturation-s)) +
+		weightLightness*(1-abs32(targetLightness-l)) +
+		weightPopulation*(sw.population/maxPopulation)
+}
+
+// labSeeds picks initial centers spread as far apart as the pixels allow,
+// without a random source, so a cover always yields the same accent.
+func labSeeds(pixels []labColor, k int) []labColor {
+	seeds := make([]labColor, 1, k)
+	seeds[0] = pixels[0]
+	for len(seeds) < k {
+		next, far := -1, float32(0)
+		for i, p := range pixels {
+			if d := nearestLabDistance(seeds, p); d > far {
+				next, far = i, d
+			}
+		}
+		if next < 0 {
+			break
+		}
+		seeds = append(seeds, pixels[next])
+	}
+	return seeds
+}
+
+func nearestLab(centers []labColor, p labColor) int {
+	best, bestD := 0, float32(math.MaxFloat32)
+	for k, c := range centers {
+		if d := labDistanceSquared(p, c); d < bestD {
+			best, bestD = k, d
+		}
+	}
+	return best
+}
+
+func nearestLabDistance(centers []labColor, p labColor) float32 {
+	bestD := float32(math.MaxFloat32)
+	for _, c := range centers {
+		bestD = min(bestD, labDistanceSquared(p, c))
+	}
+	return bestD
+}
+
+// labDistanceSquared is the squared CIE76 distance between two colors.
+func labDistanceSquared(x, y labColor) float32 {
+	dl, da, db := x.l-y.l, x.a-y.a, x.b-y.b
+	return dl*dl + da*da + db*db
+}
+
+func abs32(x float32) float32 {
+	if x < 0 {
+		return -x
+	}
+	return x
+}
+
+// rgbToHSL returns hue, saturation and lightness of a color in 0..1.
+func rgbToHSL(r, g, b float32) (h, s, l float32) {
+	hi, lo := max(r, g, b), min(r, g, b)
+	l = (hi + lo) / 2
+	if hi == lo {
+		return 0, 0, l
+	}
+	d := hi - lo
+	if l > 0.5 {
+		s = d / (2 - hi - lo)
+	} else {
+		s = d / (hi + lo)
+	}
+	switch hi {
+	case r:
+		h = (g - b) / d
+		if g < b {
+			h += 6
+		}
+	case g:
+		h = (b-r)/d + 2
+	default:
+		h = (r-g)/d + 4
+	}
+	return h / 6, s, l
+}
+
+// rgbToLab converts an sRGB color (D65) to CIE Lab.
+func rgbToLab(r, g, b float32) labColor {
+	lin := func(c float32) float32 {
+		if c <= 0.04045 {
+			return c / 12.92
+		}
+		return float32(math.Pow(float64((c+0.055)/1.055), 2.4))
+	}
+	rl, gl, bl := lin(r), lin(g), lin(b)
+	x := 0.4124*rl + 0.3576*gl + 0.1805*bl
+	y := 0.2126*rl + 0.7152*gl + 0.0722*bl
+	z := 0.0193*rl + 0.1192*gl + 0.9505*bl
+	f := func(t float32) float32 {
+		if t > 0.008856 {
+			return float32(math.Cbrt(float64(t)))
+		}
+		return 7.787*t + 16.0/116
+	}
+	fx, fy, fz := f(x/0.95047), f(y), f(z/1.08883)
+	return labColor{116*fy - 16, 500 * (fx - fy), 200 * (fy - fz)}
+}
+
+// labToRGB converts a CIE Lab color back to sRGB.
+func labToRGB(c labColor) (r, g, b float32) {
+	fy := (c.l + 16) / 116
+	fx, fz := fy+c.a/500, fy-c.b/200
+	inv := func(t float32) float32 {
+		if t3 := t * t * t; t3 > 0.008856 {
+			return t3
+		}
+		return (t - 16.0/116) / 7.787
+	}
+	x, y, z := 0.95047*inv(fx), inv(fy), 1.08883*inv(fz)
+	enc := func(v float32) float32 {
+		if v <= 0.0031308 {
+			return 12.92 * v
+		}
+		return 1.055*float32(math.Pow(float64(v), 1.0/2.4)) - 0.055
+	}
+	return clamp01(enc(3.2406*x - 1.5372*y - 0.4986*z)),
+		clamp01(enc(-0.9689*x + 1.8758*y + 0.0415*z)),
+		clamp01(enc(0.0557*x - 0.2040*y + 1.0570*z))
+}
+
+func clamp01(x float32) float32 {
+	return min(max(x, 0), 1)
 }
 
 // BlurImage returns img shrunk and blurred, more saturated, to fill a

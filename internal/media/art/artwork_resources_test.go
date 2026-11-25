@@ -42,6 +42,88 @@ func TestShrinkPreservesSampleColors(t *testing.T) {
 	}
 }
 
+// Lab is how k-means compares colors, so its conversions must round-trip.
+func TestLabRoundTrips(t *testing.T) {
+	for _, c := range [][3]float32{{0.098, 0.353, 0.863}, {0.8, 0.18, 0.17}, {0.5, 0.5, 0.5}, {0.62, 0.3, 0.48}} {
+		l := rgbToLab(c[0], c[1], c[2])
+		r, g, b := labToRGB(l)
+		if diff := r - c[0]; diff < -0.01 || diff > 0.01 {
+			t.Fatalf("%v round-tripped through %+v to %v %v %v", c, l, r, g, b)
+		}
+		if diff := g - c[1]; diff < -0.01 || diff > 0.01 {
+			t.Fatalf("%v round-tripped through %+v to %v %v %v", c, l, r, g, b)
+		}
+		if diff := b - c[2]; diff < -0.01 || diff > 0.01 {
+			t.Fatalf("%v round-tripped through %+v to %v %v %v", c, l, r, g, b)
+		}
+	}
+}
+
+// White is an extreme Palette's filter drops, so the blue minority decides the
+// cover's color instead of being washed out by it.
+func TestDominantColorFiltersExtremes(t *testing.T) {
+	img := image.NewRGBA(image.Rect(0, 0, 100, 100))
+	for y := 0; y < 100; y++ {
+		for x := 0; x < 100; x++ {
+			c := color.RGBA{255, 255, 255, 255}
+			if x < 20 {
+				c = color.RGBA{25, 90, 220, 255}
+			}
+			img.SetRGBA(x, y, c)
+		}
+	}
+	diff := func(a, b uint8) int {
+		if a > b {
+			return int(a - b)
+		}
+		return int(b - a)
+	}
+	got := DominantColor(img)
+	if diff(got.R, 25) > 24 || diff(got.G, 90) > 24 || diff(got.B, 220) > 24 {
+		t.Fatalf("dominant color = %+v, want the blue", got)
+	}
+}
+
+// A cover of only grays has no color to take, so its average shows instead.
+func TestDominantColorOfGrays(t *testing.T) {
+	img := image.NewRGBA(image.Rect(0, 0, 64, 64))
+	for y := 0; y < 64; y++ {
+		for x := 0; x < 64; x++ {
+			v := uint8((x * 4) % 256)
+			img.SetRGBA(x, y, color.RGBA{v, v, v, 255})
+		}
+	}
+	got := DominantColor(img)
+	if got.R != got.G || got.G != got.B {
+		t.Fatalf("gray cover gave %+v", got)
+	}
+}
+
+// Clusters within ΔE 12 of a heavier one merge into it, their weights added.
+func TestMergeSwatchesJoinsCloseColors(t *testing.T) {
+	merged := mergeSwatches([]dominantSwatch{
+		{rgbToLab(0.12, 0.22, 0.85), 10},
+		{rgbToLab(0.80, 0.18, 0.17), 40},
+		{rgbToLab(0.78, 0.16, 0.16), 60},
+	})
+	if len(merged) != 2 {
+		t.Fatalf("merged into %d swatches, want 2", len(merged))
+	}
+	if merged[0].population != 100 {
+		t.Fatalf("heaviest swatch population = %v, want 100", merged[0].population)
+	}
+}
+
+// Palette's HSL scoring favors colors near the middle of saturation and
+// lightness over nearly black ones, at the same population.
+func TestPaletteScorePrefersMidColors(t *testing.T) {
+	mid := dominantSwatch{rgbToLab(0.62, 0.3, 0.48), 10}
+	dark := dominantSwatch{rgbToLab(0.1, 0.03, 0.09), 10}
+	if paletteScore(mid, 10) <= paletteScore(dark, 10) {
+		t.Fatal("a mid color should score higher than a nearly black one")
+	}
+}
+
 func coverData(t testing.TB) []byte {
 	t.Helper()
 	img := image.NewRGBA(image.Rect(0, 0, 16, 16))
