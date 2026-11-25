@@ -51,8 +51,11 @@ type Settings struct {
 	Appearance string `json:"appearance"`
 	// SidebarMaterial selects solid or the platform's available translucent materials.
 	SidebarMaterial string `json:"sidebarMaterial,omitempty"`
-	// AccentCover takes the accent from the cover playing, else the app's red.
+	// AccentCover takes the accent from the cover playing, else Accent's color.
 	AccentCover bool `json:"accentCover"`
+	// Accent names the accent color chosen for when the cover is not followed;
+	// empty is the app's red.
+	Accent string `json:"accent,omitempty"`
 	// Smoke makes the progress bars comets trailing smoke as music plays,
 	// for a few percent of a core: the listener turns it on.
 	Smoke bool `json:"smoke"`

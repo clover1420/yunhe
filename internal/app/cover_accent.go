@@ -43,7 +43,7 @@ func (a *app) applyTheme(c *ui.Context) palette {
 		a.followCover()
 	}
 	p := paletteFor(&t)
-	base := accentBase(t.Dark)
+	base := accentPreset(a.settings.Accent, t.Dark)
 	if a.settings.AccentCover {
 		if accent, ok := a.coverAccent(); ok {
 			base = accent
@@ -69,6 +69,9 @@ func (a *app) progressFill(p palette) ui.Color {
 		if accent, ok := a.coverAccent(); ok {
 			return accent
 		}
+	}
+	if a.settings.Accent != "" {
+		return accentPreset(a.settings.Accent, p.Dark)
 	}
 	return p.Text.Alpha(0.75)
 }

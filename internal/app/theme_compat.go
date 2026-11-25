@@ -9,12 +9,13 @@ type palette = theme.Palette
 var (
 	paletteFor = theme.For
 
-	neutral    = theme.Neutral
-	accent     = theme.Accent
-	accentBase = theme.AccentBase
-	warm       = theme.Warm
-	veil       = theme.Veil
-	shade      = theme.Shade
+	neutral      = theme.Neutral
+	accent       = theme.Accent
+	accentBase   = theme.AccentBase
+	accentPreset = theme.AccentPreset
+	warm         = theme.Warm
+	veil         = theme.Veil
+	shade        = theme.Shade
 
 	ink   = theme.Ink
 	paper = theme.Paper

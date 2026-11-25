@@ -415,10 +415,30 @@ func content(c *ui.Context, d Deps) {
 				d.Changed()
 			}
 		})
-		row("主题色跟随封面", "按钮与高亮使用当前歌曲封面的颜色，而不是默认红", func() {
+		row("主题色跟随封面", "按钮与高亮使用当前歌曲封面的颜色，而不是选择的主题色", func() {
 			if ui.Switch(c.Key("accent-cover"), &s.AccentCover).Label("主题色跟随封面").Changed() {
 				d.Changed()
 			}
+		})
+		row("主题色", "按钮与高亮所用的颜色；跟随封面时以封面颜色为准", func() {
+			dark := c.Theme().Dark
+			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+				for _, preset := range theme.Accents {
+					b := ui.ButtonBase(c).Key("accent-"+preset.ID).Size(26, 26).Radius(999).
+						Label("主题色" + preset.Label).Tooltip(preset.Label).
+						Background(theme.AccentPreset(preset.ID, dark))
+					if s.Accent == preset.ID {
+						b.Border(2, p.Text)
+					}
+					if s.AccentCover {
+						b.Disabled(true)
+					}
+					if b.Clicked() {
+						s.Accent = preset.ID
+						d.Changed()
+					}
+				}
+			})
 		})
 		if runtime.GOOS != "linux" {
 			row("侧边栏材质", "", func() {

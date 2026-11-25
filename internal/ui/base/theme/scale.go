@@ -98,6 +98,38 @@ func AccentBase(dark bool) ui.Color {
 	return ui.Oklch(0.6, 0.21, 24)
 }
 
+// Accents are the accents the listener may choose instead of the red. An ID of
+// "" is the red itself.
+var Accents = []struct{ ID, Label string }{
+	{"", "默认红"},
+	{"orange", "橙色"},
+	{"green", "绿色"},
+	{"blue", "蓝色"},
+	{"purple", "紫色"},
+}
+
+// AccentPreset returns the accent named id. Each keeps the red's lightness, so
+// white text stays legible and the app looks the same weight in any of them.
+func AccentPreset(id string, dark bool) ui.Color {
+	l, c := float32(0.6), float32(0.21)
+	if dark {
+		l, c = 0.66, 0.2
+	}
+	switch id {
+	case "":
+		return AccentBase(dark)
+	case "orange":
+		return ui.Oklch(l, c, 58)
+	case "green":
+		return ui.Oklch(l, c-0.025, 148)
+	case "blue":
+		return ui.Oklch(l, c, 258)
+	case "purple":
+		return ui.Oklch(l, c-0.01, 305)
+	}
+	return AccentBase(dark)
+}
+
 // Warm is the membership's gold.
 func Warm(dark bool, step int) ui.Color {
 	if dark {

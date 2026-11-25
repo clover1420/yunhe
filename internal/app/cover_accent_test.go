@@ -20,6 +20,7 @@ func TestCoverAccent(t *testing.T) {
 	}{
 		{"vivid red", ui.RGB(220, 40, 30), true},
 		{"vivid green", ui.RGB(30, 180, 70), true},
+		{"pale blue", ui.RGB(213, 218, 239), true},
 		{"gray cover", ui.RGB(120, 120, 120), false},
 		{"black cover", ui.RGB(0, 0, 0), false},
 	} {
@@ -73,6 +74,40 @@ func TestApplyThemeAccentCover(t *testing.T) {
 	}
 	if gray := accentOf(true, &artwork{Tint: ui.RGB(120, 120, 120)}); !same(gray, red) {
 		t.Fatalf("gray cover: %+v, want the fixed red %+v", gray, red)
+	}
+}
+
+// A chosen theme color colors the app while the cover is not followed, gives
+// way to a vivid cover, and returns when that cover is too gray to follow.
+func TestApplyThemeAccentPreset(t *testing.T) {
+	same := func(x, y ui.Color) bool {
+		return x.R == y.R && x.G == y.G && x.B == y.B && x.A == y.A
+	}
+	accentOf := func(preset string, follow bool, cover *artwork) (ui.Color, ui.Color) {
+		a := newTestApp()
+		a.settings = defaultSettings()
+		a.settings.Accent = preset
+		a.settings.AccentCover = follow
+		a.coverArt = cover
+		var themeAccent, fill ui.Color
+		tt := ui.NewTester(func(c *ui.Context) {
+			p := a.applyTheme(c)
+			themeAccent, fill = a.pal.Accent, a.progressFill(p)
+		}, 400, 300)
+		tt.Frame()
+		return themeAccent, fill
+	}
+	blue := accentPreset("blue", false)
+	if got, fill := accentOf("blue", false, nil); !same(got, blue) || !same(fill, blue) {
+		t.Fatalf("preset: accent=%+v fill=%+v, want %+v", got, fill, blue)
+	}
+	greenCover := &artwork{Tint: ui.RGB(30, 180, 70)}
+	if got, _ := accentOf("blue", true, greenCover); same(got, blue) {
+		t.Fatalf("the cover should win over the preset: %+v", got)
+	}
+	grayCover := &artwork{Tint: ui.RGB(120, 120, 120)}
+	if got, fill := accentOf("blue", true, grayCover); !same(got, blue) || !same(fill, blue) {
+		t.Fatalf("gray cover: accent=%+v fill=%+v, want the preset %+v", got, fill, blue)
 	}
 }
 
