@@ -63,6 +63,8 @@ func TestQuitOnCloseSettings(t *testing.T) {
 func TestPlaybackFadeSettings(t *testing.T) {
 	a := newTestApp()
 	a.settings = defaultSettings()
+	// The fade switch lives on the playback category.
+	a.settingsTab = int(settingsPlayback)
 	a.settings.Path = filepath.Join(t.TempDir(), "settings.json")
 	tt := ui.NewTester(a.settingsView, 560, 2000)
 	tt.Frame()
@@ -89,6 +91,8 @@ func TestPlaybackFadeSettings(t *testing.T) {
 func TestVolumeBalanceSettings(t *testing.T) {
 	a := newTestApp()
 	a.settings = defaultSettings()
+	// The volume balance row lives on the playback category.
+	a.settingsTab = int(settingsPlayback)
 	a.settings.SetProgressEffect(progressSquiggly)
 	a.settings.Path = filepath.Join(t.TempDir(), "settings.json")
 	var applied []string

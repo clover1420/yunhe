@@ -21,8 +21,8 @@ func TestLyricsFontSettings(t *testing.T) {
 	a.settings.Path = filepath.Join(t.TempDir(), "settings.json")
 	tt := ui.NewTester(a.settingsView, 900, 2000)
 	tt.Frame()
-	// The lyric font row lives on the appearance page.
-	if err := tt.Click("外观"); err != nil {
+	// The lyric font row lives on the lyrics category.
+	if err := tt.Click("播放与歌词"); err != nil {
 		t.Fatal(err)
 	}
 	tt.Frame()

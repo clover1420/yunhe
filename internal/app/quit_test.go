@@ -16,6 +16,8 @@ import (
 func TestQuitAudioFollowsPlaybackFadeSetting(t *testing.T) {
 	a := newTestApp()
 	a.settings = defaultSettings()
+	// The fade switch lives on the playback category.
+	a.settingsTab = int(settingsPlayback)
 	a.settings.Path = filepath.Join(t.TempDir(), "settings.json")
 	tt := ui.NewTester(a.settingsView, 560, 2000)
 	tt.Frame()

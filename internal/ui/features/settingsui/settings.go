@@ -301,9 +301,11 @@ func content(c *ui.Context, d Deps) {
 				})
 			}
 		}
+	})
 
-		// Only on macOS, the one with a notch player.
-		if d.Notch {
+	// Only on macOS, the one with a notch player.
+	if d.Notch {
+		group(General, "刘海播放器", func() {
 			row("显示刘海播放器", "在屏幕顶部的刘海处显示迷你播放器，鼠标悬停即可展开", func() {
 				if ui.Switch(c.Key("notch"), &s.Notch).Label("显示刘海播放器").Changed() {
 					d.Changed()
@@ -319,60 +321,10 @@ func content(c *ui.Context, d Deps) {
 					d.Changed()
 				}
 			})
-		}
+		})
+	}
 
-		row("音质", "按 QQ 音乐账号权限播放，优先使用所选音质，不可用时自动降低音质；下一首生效", func() {
-			labels := make([]string, len(QualityLevels))
-			chosen := QualityLevels[1].Label
-			for i, q := range QualityLevels {
-				labels[i] = q.Label
-				if q.Level == s.Quality {
-					chosen = q.Label
-				}
-			}
-			if ui.Select(c.Key("quality"), &chosen, labels).Label("选择音质").Width(150).Changed() {
-				for _, q := range QualityLevels {
-					if q.Label == chosen {
-						s.Quality = q.Level
-					}
-				}
-				s.Save()
-				d.Redraw()
-			}
-		})
-		row("音量平衡", "", func() {
-			labels := make([]string, len(VolumeBalances))
-			chosen := VolumeBalances[2].Label
-			for i, balance := range VolumeBalances {
-				labels[i] = balance.Label
-				if balance.ID == s.VolumeBalanceMode() {
-					chosen = balance.Label
-				}
-			}
-			if ui.Select(c.Key("volume-balance"), &chosen, labels).Label("选择音量平衡").Width(150).Changed() {
-				for _, balance := range VolumeBalances {
-					if balance.Label == chosen {
-						s.SetVolumeBalance(balance.ID)
-					}
-				}
-				d.RefreshGain()
-				s.Save()
-				d.Redraw()
-			}
-		})
-		row("播放操作淡入淡出", "", func() {
-			if ui.Switch(c.Key("playback-fade"), &s.PlaybackFade).Label("切换播放操作淡入淡出").Changed() {
-				s.Save()
-				d.Redraw()
-			}
-		})
-		row("间奏时显示热评", "前奏、间奏与尾奏时，歌词处换成这首歌的热门评论", func() {
-			if ui.Switch(c.Key("hot-comments"), &s.HotComments).Label("切换热评").Changed() {
-				s.Save()
-				d.Redraw()
-			}
-		})
-
+	group(General, "缓存", func() {
 		row("缓存上限", d.CacheUsage(), func() {
 			labels := make([]string, len(CacheLimits))
 			chosen := CacheLimits[2].Label
@@ -510,6 +462,76 @@ func content(c *ui.Context, d Deps) {
 		row("光晕强度", "越高越亮，字也越容易糊在一起", func() {
 			valueSlider(c.Key("glow-level"), d, "光晕强度", "光晕强度", &s.GlowLevel, s.NpLight)
 		})
+	})
+
+	group(Playback, "播放与音质", func() {
+		row("音质", "按 QQ 音乐账号权限播放，优先使用所选音质，不可用时自动降低音质；下一首生效", func() {
+			labels := make([]string, len(QualityLevels))
+			chosen := QualityLevels[1].Label
+			for i, q := range QualityLevels {
+				labels[i] = q.Label
+				if q.Level == s.Quality {
+					chosen = q.Label
+				}
+			}
+			if ui.Select(c.Key("quality"), &chosen, labels).Label("选择音质").Width(150).Changed() {
+				for _, q := range QualityLevels {
+					if q.Label == chosen {
+						s.Quality = q.Level
+					}
+				}
+				s.Save()
+				d.Redraw()
+			}
+		})
+		row("音量平衡", "", func() {
+			labels := make([]string, len(VolumeBalances))
+			chosen := VolumeBalances[2].Label
+			for i, balance := range VolumeBalances {
+				labels[i] = balance.Label
+				if balance.ID == s.VolumeBalanceMode() {
+					chosen = balance.Label
+				}
+			}
+			if ui.Select(c.Key("volume-balance"), &chosen, labels).Label("选择音量平衡").Width(150).Changed() {
+				for _, balance := range VolumeBalances {
+					if balance.Label == chosen {
+						s.SetVolumeBalance(balance.ID)
+					}
+				}
+				d.RefreshGain()
+				s.Save()
+				d.Redraw()
+			}
+		})
+		row("播放操作淡入淡出", "", func() {
+			if ui.Switch(c.Key("playback-fade"), &s.PlaybackFade).Label("切换播放操作淡入淡出").Changed() {
+				s.Save()
+				d.Redraw()
+			}
+		})
+		row("进度条特效", "", func() {
+			chosen := ProgressEffects[0].Label
+			labels := make([]string, len(ProgressEffects))
+			for k, effect := range ProgressEffects {
+				labels[k] = effect.Label
+				if effect.ID == s.ProgressEffectMode() {
+					chosen = effect.Label
+				}
+			}
+			if ui.Select(c.Key("progress-effect"), &chosen, labels).Label("选择进度条特效").Width(150).Changed() {
+				for _, effect := range ProgressEffects {
+					if effect.Label == chosen {
+						s.SetProgressEffect(effect.ID)
+					}
+				}
+				s.Save()
+				d.Redraw()
+			}
+		})
+	})
+
+	group(Playback, "歌词", func() {
 		row("歌词字体", "", func() {
 			const defaultFont = "跟随默认"
 			families := ui.FontFamilies()
@@ -537,9 +559,12 @@ func content(c *ui.Context, d Deps) {
 				d.Redraw()
 			}
 		})
-	})
-
-	group(Playback, "歌词与播放", func() {
+		row("间奏时显示热评", "前奏、间奏与尾奏时，歌词处换成这首歌的热门评论", func() {
+			if ui.Switch(c.Key("hot-comments"), &s.HotComments).Label("切换热评").Changed() {
+				s.Save()
+				d.Redraw()
+			}
+		})
 		if lyricsui.SupportsTaskbarLyrics() {
 			row("外部歌词", "", func() {
 				i := 0
@@ -588,25 +613,9 @@ func content(c *ui.Context, d Deps) {
 				})
 			})
 		}
-		row("进度条特效", "", func() {
-			chosen := ProgressEffects[0].Label
-			labels := make([]string, len(ProgressEffects))
-			for k, effect := range ProgressEffects {
-				labels[k] = effect.Label
-				if effect.ID == s.ProgressEffectMode() {
-					chosen = effect.Label
-				}
-			}
-			if ui.Select(c.Key("progress-effect"), &chosen, labels).Label("选择进度条特效").Width(150).Changed() {
-				for _, effect := range ProgressEffects {
-					if effect.Label == chosen {
-						s.SetProgressEffect(effect.ID)
-					}
-				}
-				s.Save()
-				d.Redraw()
-			}
-		})
+	})
+
+	group(Playback, "实验性功能", func() {
 		row("烟雾背景", "播放页的背景化作封面色调的烟雾，缓缓升起，随低音起伏；仍在打磨，会多用一些电量", func() {
 			if ui.Switch(c.Key("fog"), &s.Fog).Label("烟雾背景").Changed() {
 				d.Changed()

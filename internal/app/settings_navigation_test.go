@@ -129,6 +129,8 @@ func TestSettingsOverlayKeepsPageScroll(t *testing.T) {
 func TestSettingsPageSpaceTogglesControl(t *testing.T) {
 	a := newTestApp()
 	a.settings = defaultSettings()
+	// The hot comments switch lives on the playback category.
+	a.settingsTab = int(settingsPlayback)
 	a.settings.Path = filepath.Join(t.TempDir(), "settings.json")
 	a.route = route{Page: pageSettings}
 	a.pl.Cue([]qqmusic.Track{{ID: 1, Name: "宝船"}})
