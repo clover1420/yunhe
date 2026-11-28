@@ -70,6 +70,12 @@ type Settings struct {
 	LyricsFontSize float64 `json:"lyricsFontSize,omitempty"`
 	// LyricsFont is the lyric font family; empty follows the app's default.
 	LyricsFont string `json:"lyricsFont,omitempty"`
+	// LyricsAlign is how the scrolling lyrics align in Now Playing: "center",
+	// or empty for their start.
+	LyricsAlign string `json:"lyricsAlign,omitempty"`
+	// NoLyricsBlur keeps Now Playing's scrolling lyrics sharp, rather than
+	// blurring the lines other than the one sung as they get farther.
+	NoLyricsBlur bool `json:"noLyricsBlur,omitempty"`
 	// StageStyle is how the stage sets its lyrics (stageStyles): empty for
 	// Folia's classic, or the id of another of its visualizers.
 	StageStyle string `json:"stageStyle,omitempty"`
@@ -126,6 +132,10 @@ type Settings struct {
 	// listener has turned that light up, 0.5 as it was tuned.
 	NpLight   bool    `json:"npLight"`
 	GlowLevel float64 `json:"glowLevel"`
+
+	// CoverQuality is the size of the cover Now Playing shows: empty for the
+	// cover itself, else the thumbnail size in pixels.
+	CoverQuality string `json:"coverQuality,omitempty"`
 
 	// Path is where they were loaded from, and are saved to.
 	Path string `json:"-"`
@@ -222,6 +232,12 @@ func (s Settings) Save() error {
 	}
 	return os.WriteFile(path, b, 0o600)
 }
+
+// CenterLyrics reports whether Now Playing's scrolling lyrics are centered.
+func (s Settings) CenterLyrics() bool { return s.LyricsAlign == "center" }
+
+// BlurLyrics reports whether the lyrics other than the one sung blur.
+func (s Settings) BlurLyrics() bool { return !s.NoLyricsBlur }
 
 // ShowTaskbarLyricsCover reports whether taskbar lyrics show the album artwork.
 func (s Settings) ShowTaskbarLyricsCover() bool {

@@ -353,6 +353,10 @@ func TestSizedArtwork(t *testing.T) {
 				if got := Sized(pic, size.request); got != want {
 					t.Errorf("Sized(%d) = %q, want %q", size.request, got, want)
 				}
+				original := fmt.Sprintf("https://y.gtimg.cn/music/photo_new/%sM000album.jpg?max_age=2592000", kind)
+				if got := Original(pic); got != original {
+					t.Errorf("Original() = %q, want %q", got, original)
+				}
 			})
 		}
 	}

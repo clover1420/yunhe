@@ -10,6 +10,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
+	"lilt/internal/media/lyrics"
 	"lilt/internal/media/qqmusic"
 )
 
@@ -150,7 +151,7 @@ func TestCmdNumberChoosesTab(t *testing.T) {
 		keys  []int // from 1, 0 for the last tab
 		panes []int
 	}{
-		{qqmusic.Track{ID: 1, Name: "宝船", Duration: 200000}, []int{4, 2, 1}, []int{paneWall, paneStage, paneLyrics}},
+		{qqmusic.Track{ID: 1, Name: "宝船", Duration: 200000}, []int{4, 2, 1}, []int{paneQueue, paneStage, paneLyrics}},
 		{qqmusic.Track{ID: 2, Name: "节目", ProgramID: 9, Duration: 200000}, []int{0, 1}, []int{paneComments, paneProgram}},
 	} {
 		a := newTestApp()
@@ -225,6 +226,28 @@ func TestNowPlayingTabsStayPut(t *testing.T) {
 	}
 }
 
+// The analysis tab shows the analysis pane, which takes the whole view.
+func TestAnalysisTabShowsThePane(t *testing.T) {
+	a := newTestApp()
+	a.settings = defaultSettings()
+	a.pl.Cue([]qqmusic.Track{{ID: 1, Name: "一", Duration: 200000}})
+	a.pl.SetLyrics(nil)
+	a.nowPlaying = true
+	tt := ui.NewTester(a.view, 1200, 800)
+	tt.Frame()
+	tt.Advance(time.Second)
+	tt.Frame()
+	if err := tt.Click("分析"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	tt.Advance(time.Second)
+	tt.Frame()
+	if a.npPane != paneAnalysis {
+		t.Fatalf("chose pane %d, want the analysis", a.npPane)
+	}
+}
+
 // With NM_FRAMES set, saves Now Playing's layouts and control states to inspect alignment and media contrast in both appearances.
 func TestNowPlayingFrames(t *testing.T) {
 	dir := os.Getenv("NM_FRAMES")
@@ -238,6 +261,9 @@ func TestNowPlayingFrames(t *testing.T) {
 		hover   string
 		pressed bool
 		dark    bool
+		lyrics  bool
+		center  bool
+		blurOff bool
 	}{
 		{name: "short", w: 860, h: 560},
 		{name: "regular", w: 1200, h: 800},
@@ -263,6 +289,12 @@ func TestNowPlayingFrames(t *testing.T) {
 		{name: "stage-play-hover", w: 1200, h: 800, pane: paneStage, hover: "播放/暂停"},
 		{name: "wall", w: 1200, h: 800, pane: paneWall},
 		{name: "wall-play-hover", w: 1200, h: 800, pane: paneWall, hover: "播放/暂停"},
+		{name: "analysis", w: 1200, h: 800, pane: paneAnalysis},
+		{name: "analysis-short", w: 860, h: 560, pane: paneAnalysis},
+		{name: "analysis-wide", w: 1920, h: 1080, pane: paneAnalysis},
+		{name: "lyrics", w: 1200, h: 800, lyrics: true},
+		{name: "lyrics-center", w: 1200, h: 800, lyrics: true, center: true},
+		{name: "lyrics-sharp", w: 1200, h: 800, lyrics: true, blurOff: true},
 	} {
 		t.Run(scene.name, func(t *testing.T) {
 			a := newTestApp()
@@ -270,6 +302,20 @@ func TestNowPlayingFrames(t *testing.T) {
 			tr := qqmusic.Track{ID: 1, Name: "宝船", Artists: []qqmusic.Artist{{Name: "DOUDOU"}}, Album: qqmusic.Album{PicURL: "layout-cover"}, Duration: 200000}
 			a.pl.Cue([]qqmusic.Track{tr})
 			a.pl.SetLyrics(nil)
+			if scene.lyrics {
+				a.pl.SetLyrics(lyrics.Build("", "",
+					"[1000,4000]海面上一只宝船(1000,4000)\n[6000,4000]载着我们的梦(6000,4000)\n[11000,4000]风把帆吹得很满(11000,4000)\n"+
+						"[16000,4000]远处有灯塔在闪(16000,4000)\n[21000,4000]我们把歌声放得很轻(21000,4000)\n[26000,4000]怕惊动海底的月亮(26000,4000)\n"+
+						"[31000,4000]航线画在夜色里(31000,4000)\n[36000,4000]星星替我们数着浪(36000,4000)\n[41000,4000]宝船慢慢向前(41000,4000)\n"+
+						"[46000,5000]天亮之前就到岸(46000,5000)"))
+				a.pl.Seek(23 * time.Second)
+			}
+			if scene.center {
+				a.settings.LyricsAlign = "center"
+			}
+			if scene.blurOff {
+				a.settings.NoLyricsBlur = true
+			}
 			a.volume = 0.72
 			a.pl.SetVolume(a.volume)
 			if scene.hover == "取消喜欢" {
@@ -284,6 +330,7 @@ func TestNowPlayingFrames(t *testing.T) {
 			for _, size := range []int{96, 120, 240, 600} {
 				a.art.Add(qqmusic.Sized(tr.Album.PicURL, size), art)
 			}
+			a.art.Add(qqmusic.Original(tr.Album.PicURL), art)
 			a.art.Add(qqmusic.Sized(tr.Album.PicURL, 600)+"#backdrop", art)
 			tt := ui.NewTester(a.view, scene.w, scene.h)
 			tt.SetDark(scene.dark)

@@ -35,6 +35,7 @@ const (
 	PaneProgram
 	PaneCaptions
 	PaneWall
+	PaneAnalysis
 )
 
 // Deps are what Now Playing needs from the app it runs in: the player and
@@ -110,6 +111,9 @@ type Deps struct {
 	BackdropOver  func(*ui.Painter, ui.Rect, ui.Rect, func(float32) float32)
 
 	Wall *WallState
+
+	Analysis      *AnalysisState
+	AnalysisScrub *transport.State
 
 	Comments          CommentFeed
 	LoadComments      func()
@@ -235,11 +239,15 @@ func View(c *ui.Context, d Deps) {
 	// keep our time labels ticking independently of paint-only animations.
 	transport.TickTimes(c, pl)
 	w, h := c.Size()
-	art := d.Art.Get(qqmusic.Sized(tr.Album.PicURL, 600), art.Backdrop)
+	cover := d.Art.Get(coverURL(tr.Album.PicURL, d.Settings.CoverQuality), art.Backdrop)
+	if cover != nil && cover.Failed {
+		// A cover QQ serves only as a thumbnail: the largest of them.
+		cover = d.Art.Get(qqmusic.Sized(tr.Album.PicURL, 600), art.Backdrop)
+	}
 	// The colors stay the last song's while its cover loads, rather than
 	// going gray between the two.
-	shown := art
-	if art == nil && tr.Album.PicURL != "" {
+	shown := cover
+	if cover == nil && tr.Album.PicURL != "" {
 		shown = *d.NPArt
 	}
 	*d.NPArt = shown
@@ -272,7 +280,7 @@ func View(c *ui.Context, d Deps) {
 		bloom.Children(func() { d.Backdrop(c, shown, tint) })
 		// Over the backdrop, which is positioned too: positioned elements
 		// paint over those in the flow.
-		ui.Column(c).Absolute().Top(0).Left(0).Right(0).Bottom(0).Children(func() { body(c, d, tr, art, accent, w, h, pointerIn) })
+		ui.Column(c).Absolute().Top(0).Left(0).Right(0).Bottom(0).Children(func() { body(c, d, tr, cover, accent, w, h, pointerIn) })
 	})
 }
 
@@ -282,7 +290,7 @@ func body(c *ui.Context, d Deps, tr *qqmusic.Track, art *art.Artwork, accent ui.
 	// An episode has what it is about and its captions in place of lyrics;
 	// a song, lyrics in place of those.
 	switch program := tr.ProgramID != 0; {
-	case program && *d.Pane == PaneWall:
+	case program && (*d.Pane == PaneWall || *d.Pane == PaneAnalysis):
 		*d.Pane = PaneQueue
 	case program && (*d.Pane == PaneLyrics || *d.Pane == PaneStage):
 		*d.Pane = PaneProgram
@@ -325,6 +333,12 @@ func body(c *ui.Context, d Deps, tr *qqmusic.Track, art *art.Artwork, accent ui.
 		if *d.Pane == PaneWall {
 			// The wall takes the whole view too, under the song playing.
 			WallPane(c, d, tr, art, accent, w, h, pointerIn)
+			return
+		}
+		if *d.Pane == PaneAnalysis {
+			// The analysis takes the whole view too.
+			m.Rise(Reveal(TabsRow(c, w, h, d.TopBar(c)), pointerIn), 0).Children(func() { d.PaneTabs(c) })
+			AnalysisPane(c, d, tr, art, accent, w, h)
 			return
 		}
 

@@ -94,7 +94,7 @@ func LyricsPane(c *ui.Context, d Deps, tr *qqmusic.Track, h float32) {
 	}
 	defer d.QuietCard(c, dim, h*0.18)
 	ly.Font, ly.Browse = font, d.LyricBrowse
-	TimedLines(c, ly, scroll, lines, pos, cur, lag, LinesStyle{Font: font, Size: size, TranslationSize: 17 * size / LyricsFontSizeDefault, Weight: 800, LineHeight: 1.25, Quiet: quiet, Relayout: resized || resumed}, nil)
+	TimedLines(c, ly, scroll, lines, pos, cur, lag, LinesStyle{Font: font, Size: size, TranslationSize: 17 * size / LyricsFontSizeDefault, Weight: 800, LineHeight: 1.25, Quiet: quiet, Center: d.Settings.CenterLyrics(), Blur: d.Settings.BlurLyrics(), Relayout: resized || resumed}, nil)
 }
 
 // lyricStep steps the glide of the lyrics or captions, and leaves the line
@@ -193,6 +193,8 @@ type LinesStyle struct {
 	LineHeight      float32
 	Quiet           bool
 	Relayout        bool // wait for the new size's committed bounds before following
+	Center          bool // center the lines, rather than starting them at the left
+	Blur            bool // blur the lines other than the one sung, the farther the more
 }
 
 // TimedLines fills scroll with lines that follow the track playing at
@@ -207,16 +209,34 @@ func TimedLines(c *ui.Context, l Lyrics, scroll ui.Element, lines []lyrics.Line,
 	}
 	var active ui.Element
 	seeked := false
+	align := ui.Start
+	if st.Center {
+		align = ui.Center
+	}
 	scroll.Children(func() {
-		ui.Column(c).Gap(6).Translate(0, -lag).Children(func() {
+		col := ui.Column(c).Gap(6).Translate(0, -lag)
+		if st.Center {
+			// The lines, as wide as the view, center in it.
+			col.AlignItems(ui.Center)
+		}
+		col.Children(func() {
 			for i, line := range lines {
-				b := ui.ButtonBase(c.Key(i)).Column().AlignItems(ui.Start).Padding(10, 12).Radius(14).Gap(6).FocusRing(false).Label(line.Text)
+				b := ui.ButtonBase(c.Key(i)).Column().AlignItems(align).Padding(10, 12).Radius(14).Gap(6).FocusRing(false).Label(line.Text)
 				on := i == cur
 				alpha := float32(0.28)
 				if on {
 					alpha = 1
 				} else if b.Hovered() {
 					alpha = 0.55
+				}
+				// Other lines blur the farther they are from the one sung,
+				// as the perspective lyrics always did.
+				blur := float32(0)
+				if st.Blur && cur >= 0 && !on && !b.Hovered() && !b.FocusVisible() {
+					distance := abs32(float32(i - cur))
+					alpha *= 1 - 0.5*clamp01((distance-1)/4)
+					k := 2 * lyricBlurLevel
+					blur = min(4*k, 0.9*distance*k)
 				}
 				if st.Quiet {
 					// Nearly gone under a hot comment.
@@ -229,12 +249,19 @@ func TimedLines(c *ui.Context, l Lyrics, scroll ui.Element, lines []lyrics.Line,
 				if on {
 					scale = 1
 				}
-				b.TransformOrigin(0, 0.5).AnimatePose(ui.Pose{Scale: scale}, ui.Animation{Spring: ui.SpringOptions{Duration: 600 * time.Millisecond, Bounce: 0.1}})
+				origin := float32(0)
+				if st.Center {
+					origin = 0.5
+				}
+				b.TransformOrigin(origin, 0.5).AnimatePose(ui.Pose{Scale: scale}, ui.Animation{Spring: ui.SpringOptions{Duration: 600 * time.Millisecond, Bounce: 0.1}})
 				b.Children(func() {
 					// The line fades as a pose, in frames that only paint, rather
 					// than building the view at the display's rate as it does.
-					text := ui.Column(c).AlignItems(ui.Start).Gap(6)
+					text := ui.Column(c).AlignItems(align).Gap(6)
 					text.AnimatePose(ui.Pose{Fade: 1 - alpha}, ui.Animation{Duration: 380 * time.Millisecond})
+					if st.Blur {
+						text.Blur(text.AnimateTo("blur", blur, ui.Animation{Duration: 300 * time.Millisecond}))
+					}
 					text.Children(func() {
 						if on && line.Timed && len(line.Words) > 0 {
 							// The line sung lights up word by word as it is sung.
@@ -262,7 +289,7 @@ func TimedLines(c *ui.Context, l Lyrics, scroll ui.Element, lines []lyrics.Line,
 							ui.Text(c, line.Translation).Font(st.Font).FontSize(size).FontWeight(600).TextColor(white.Alpha(0.7))
 						}
 						// The line sung again in light, over it and blurred.
-						if on && l.glows() {
+						if on && l.glows() && !st.Quiet {
 							l.lineGlow(c, line, pos, st)
 						}
 					})
@@ -408,6 +435,10 @@ func (g *Glide) Step(c *ui.Context, s *ui.ScrollState) (lag float32, scrolled bo
 // QuietFaded is how much of the lyrics shows under a hot comment.
 const QuietFaded = 0.06
 
+// lyricBlurLevel is how strongly the lines other than the one sung blur,
+// 0 to 1: 0.5 as the effect was designed.
+const lyricBlurLevel float32 = 0.5
+
 // QuietUnder fades e, the lyrics, under a hot comment as far in as dim,
 // and hides it once the comment is all in.
 func QuietUnder(e ui.Element, dim float32) ui.Element {
@@ -481,16 +512,27 @@ func (l Lyrics) lineGlow(c *ui.Context, line lyrics.Line, pos time.Duration, st 
 	gain := l.glowGain()
 	aura := lineAura * gain
 	var glow ui.Element
-	if len(line.Words) > 0 {
+	// Words without their own times, as LRC lyrics spread over the line,
+	// glow as the line does rather than on estimates.
+	if len(line.Words) > 0 && line.Timed {
 		if pos < line.Words[0].Start {
 			return
 		}
 		glow = ui.RichText(c.Key("glow")).Children(func() {
 			for wi, wd := range line.Words {
 				if pos < wd.Start {
+					// Words to come keep a little alpha, so that the glow's
+					// text is as wide as the line and stays on the words
+					// where the lyrics are centered.
+					for ; wi < len(line.Words); wi++ {
+						ui.Text(c.Key(wi), line.Words[wi].Text).TextColor(l.Glow.Alpha(0.02))
+					}
 					break
 				}
-				v := aura * wd.Progress(pos)
+				// The word being sung lights as far as it is sung, and
+				// does not vanish as it begins, so that the glow moves on
+				// with the words rather than a word behind them.
+				v := aura * (0.3 + 0.7*wd.Progress(pos))
 				if line.Timed {
 					v += wordSwell * gain * wordHeld(wd, wi == len(line.Words)-1, pos)
 				}
@@ -502,4 +544,7 @@ func (l Lyrics) lineGlow(c *ui.Context, line lyrics.Line, pos time.Duration, st 
 	}
 	glow.Absolute().Top(0).Left(0).Right(0).Font(st.Font).FontSize(st.Size).FontWeight(st.Weight).LineHeight(st.LineHeight).LetterSpacing(-0.4).
 		Blur(st.Size * 0.22).PassThrough()
+	if st.Center {
+		glow.TextAlign(ui.Center)
+	}
 }

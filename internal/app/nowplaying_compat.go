@@ -4,6 +4,7 @@ import (
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
+	"lilt/internal/media/player"
 	"lilt/internal/media/qqmusic"
 	"lilt/internal/ui/base/skeleton"
 	"lilt/internal/ui/features/nowplaying"
@@ -34,6 +35,7 @@ const (
 	paneProgram  = nowplaying.PaneProgram
 	paneCaptions = nowplaying.PaneCaptions
 	paneWall     = nowplaying.PaneWall
+	paneAnalysis = nowplaying.PaneAnalysis
 
 	wallPitch = nowplaying.WallPitch
 )
@@ -106,6 +108,8 @@ func (a *app) nowplayingDeps() nowplaying.Deps {
 		StageSkeleton:     func(c *ui.Context, f, w float32) { skeleton.Stage(c, npShimmer(c), f, w) },
 		BackdropOver:      a.backdropOver,
 		Wall:              &a.wallState,
+		Analysis:          &a.an,
+		AnalysisScrub:     &a.anScrub,
 		Comments:          commentFeed{a},
 		LoadComments:      a.loadComments,
 		ToggleCommentLike: a.toggleCommentLike,
@@ -142,6 +146,8 @@ func (a *app) npState(c *ui.Context) (open, settled bool) {
 }
 
 func (a *app) nowPlayingLayer(c *ui.Context, open, settled bool) {
+	// The player measures the analysis only while its pane shows.
+	player.SetAnalyzing(open && a.npPane == paneAnalysis)
 	nowplaying.Layer(c, a.nowplayingDeps(), open, settled)
 }
 

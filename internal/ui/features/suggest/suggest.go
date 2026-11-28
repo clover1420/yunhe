@@ -52,7 +52,10 @@ type Deps struct {
 	State         *State
 
 	Post func(func())
-	Pane func(e ui.Element, radius float32, onDark bool) ui.Element
+	// PaneSolid styles the field's popup, which floats over the sidebar:
+	// the glass of the app's other panes cannot sample the system's
+	// material there, and would tint the popup gray.
+	PaneSolid func(e ui.Element, radius float32, onDark bool) ui.Element
 
 	Fetch func(ctx context.Context, q string) (qqmusic.Suggestions, error)
 
@@ -186,7 +189,7 @@ func Field(c *ui.Context, d Deps) {
 		cb.Popup(func(panel ui.Element) {
 			panel.AttachTo(field, ui.AnchorBottomStart, ui.AnchorTopStart).
 				Width(field.Bounds().W).Padding(6).Margin(8, 0, 0, 0)
-			d.Pane(panel, 14, false)
+			d.PaneSolid(panel, 14, false)
 			option := func(key, label string) ui.Element {
 				row := cb.Item(key).MinHeight(36).Padding(6, 10).Gap(10).Radius(8).AlignItems(ui.Center).Label(label)
 				if row.Highlighted() {

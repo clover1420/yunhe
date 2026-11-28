@@ -42,3 +42,15 @@ func (a *app) pane(e ui.Element, radius float32, onDark bool) ui.Element {
 	}
 	return e.Material(glass.Glass{Tint: ui.RGBA(250, 250, 252, 0.58)}).Border(0.5, ui.RGBA(0, 0, 0, 0.1))
 }
+
+// paneSolid is pane as plain color, without the glass, for what floats over
+// the sidebar: there the system's material fills the window, the scene leaves
+// that stretch see-through, and the glass, which samples the scene, tints it
+// gray instead of showing what is behind the window.
+func (a *app) paneSolid(e ui.Element, radius float32, onDark bool) ui.Element {
+	e.Radius(radius).Shadow(0, 18, 44, -12, ui.RGBA(0, 0, 0, 0.35))
+	if onDark || a.pal.Dark {
+		return e.Background(ui.Hex("#232327")).Border(0.5, white.Alpha(0.12))
+	}
+	return e.Background(ui.Hex("#f6f6f8")).Border(0.5, ui.RGBA(0, 0, 0, 0.12))
+}

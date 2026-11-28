@@ -79,6 +79,11 @@ func flacDataStart(dl *download) (int64, error) {
 func (s *flacStream) SampleRate() int { return int(s.info.SampleRate) }
 func (s *flacStream) Channels() int   { return 2 }
 
+// format is the FLAC's rate and bits a sample, as its stream info says.
+func (s *flacStream) format() (rate, bits int) {
+	return int(s.info.SampleRate), int(s.info.BitsPerSample)
+}
+
 func (s *flacStream) Len() int64 {
 	if s.info.NSamples == 0 {
 		return -1

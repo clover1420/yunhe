@@ -134,6 +134,7 @@ func TestNowPlayingClosingCoverDoesNotBlink(t *testing.T) {
 	for _, size := range []int{120, 600} {
 		a.art.Add(qqmusic.Sized(tr.Album.PicURL, size), art)
 	}
+	a.art.Add(qqmusic.Original(tr.Album.PicURL), art)
 	a.pl.Cue([]qqmusic.Track{tr})
 	a.pl.SetLyrics(nil)
 	a.npPane = paneQueue
@@ -213,6 +214,7 @@ func TestNowPlayingTransitionFrames(t *testing.T) {
 			for _, size := range []int{120, 600} {
 				a.art.Add(qqmusic.Sized(tr.Album.PicURL, size), art)
 			}
+			a.art.Add(qqmusic.Original(tr.Album.PicURL), art)
 			a.pl.Cue([]qqmusic.Track{tr})
 			a.pl.SetLyrics(nil)
 			a.npPane = scene.pane

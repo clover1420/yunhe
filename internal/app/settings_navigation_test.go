@@ -195,6 +195,24 @@ func TestSettingsPageFrames(t *testing.T) {
 					t.Fatalf("write frame: %v, %v", err, closeErr)
 				}
 			}
+			if width == 1180 && !dark {
+				// The lyrics group, for the blur and alignment settings.
+				if err := tt.Click("播放与歌词"); err != nil {
+					t.Fatal(err)
+				}
+				tt.Frame()
+				tt.Scroll(float32(width-100), 550, 0, 360)
+				tt.Frame()
+				f, err := os.Create(filepath.Join(dir, "settings-lyrics.png"))
+				if err != nil {
+					t.Fatal(err)
+				}
+				err = png.Encode(f, tt.Image())
+				closeErr := f.Close()
+				if err != nil || closeErr != nil {
+					t.Fatalf("write frame: %v, %v", err, closeErr)
+				}
+			}
 		}
 	}
 }

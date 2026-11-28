@@ -454,13 +454,20 @@ func content(c *ui.Context, d Deps) {
 				d.Changed()
 			}
 		})
-		row("歌词光晕", "正在唱的那一行，在封面的颜色里发光", func() {
-			if ui.Switch(c.Key("np-light"), &s.NpLight).Label("歌词光晕").Changed() {
-				d.Changed()
+		row("封面图片等级", "播放页封面的清晰度：原图最清晰，档位越低加载越快", func() {
+			modes := []string{"original", "800", "500", "300"}
+			labels := []string{"原图", "高清", "标准", "流畅"}
+			i := 0
+			for k, mode := range modes {
+				if mode == s.CoverQuality {
+					i = k
+				}
 			}
-		})
-		row("光晕强度", "越高越亮，字也越容易糊在一起", func() {
-			valueSlider(c.Key("glow-level"), d, "光晕强度", "光晕强度", &s.GlowLevel, s.NpLight)
+			if appui.Segmented(c.Key("cover-quality"), &i, labels...) {
+				s.CoverQuality = modes[i]
+				s.Save()
+				d.Redraw()
+			}
 		})
 	})
 
@@ -559,11 +566,42 @@ func content(c *ui.Context, d Deps) {
 				d.Redraw()
 			}
 		})
+		row("歌词模糊", "当前行以外的歌词按距离变模糊，越远越模糊", func() {
+			blur := s.BlurLyrics()
+			if ui.Switch(c.Key("lyrics-blur"), &blur).Label("切换歌词模糊").Changed() {
+				s.NoLyricsBlur = !blur
+				s.Save()
+				d.Redraw()
+			}
+		})
+		row("歌词对齐", "", func() {
+			i := 0
+			if s.CenterLyrics() {
+				i = 1
+			}
+			if appui.Segmented(c.Key("lyrics-align"), &i, "左对齐", "居中") {
+				if i == 1 {
+					s.LyricsAlign = "center"
+				} else {
+					s.LyricsAlign = ""
+				}
+				s.Save()
+				d.Redraw()
+			}
+		})
 		row("间奏时显示热评", "前奏、间奏与尾奏时，歌词处换成这首歌的热门评论", func() {
 			if ui.Switch(c.Key("hot-comments"), &s.HotComments).Label("切换热评").Changed() {
 				s.Save()
 				d.Redraw()
 			}
+		})
+		row("歌词光晕", "正在唱的那一行，在封面的颜色里发光", func() {
+			if ui.Switch(c.Key("np-light"), &s.NpLight).Label("歌词光晕").Changed() {
+				d.Changed()
+			}
+		})
+		row("光晕强度", "越高越亮，字也越容易糊在一起", func() {
+			valueSlider(c.Key("glow-level"), d, "光晕强度", "光晕强度", &s.GlowLevel, s.NpLight)
 		})
 		if lyricsui.SupportsTaskbarLyrics() {
 			row("外部歌词", "", func() {

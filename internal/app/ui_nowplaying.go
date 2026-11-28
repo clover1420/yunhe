@@ -36,7 +36,7 @@ func (a *app) npTabs() []npTab {
 		}
 		return append(tabs, npTab{paneQueue, "播放列表"}, npTab{paneComments, "评论"})
 	}
-	return []npTab{{paneLyrics, "歌词"}, {paneStage, "律动"}, {paneQueue, "播放列表"}, {paneWall, "选歌"}, {paneComments, "评论"}}
+	return []npTab{{paneLyrics, "歌词"}, {paneStage, "律动"}, {paneAnalysis, "分析"}, {paneQueue, "播放列表"}, {paneWall, "选歌"}, {paneComments, "评论"}}
 }
 
 func (a *app) paneTabs(c *ui.Context) {

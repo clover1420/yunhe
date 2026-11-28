@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"sync"
+	"sync/atomic"
 
 	"github.com/egoist/mygo/audio"
 	gomp3 "github.com/hajimehoshi/go-mp3"
@@ -568,6 +569,7 @@ type spectrumChunk struct {
 
 type spectrum struct {
 	mu     sync.Mutex
+	rate   int
 	chunks []spectrumChunk
 	// requested holds only the latest chunk asked for. A worker exits when
 	// it has caught up; it never polls, holds a timer or measures the ring.
@@ -581,11 +583,24 @@ type spectrum struct {
 	acc       []float32 // mono samples of the chunk being filled
 	accAt     int64     // its first frame
 	edges     [Bands + 1]int
+	// The analysis (analysis.go): each channel's samples of the chunk
+	// being filled, while it is measured, and its ring, made the first
+	// time it is.
+	accL, accR []float32
+	an         atomic.Pointer[analyzer]
+}
+
+// analyzer returns the analysis's ring, or nil if none was measured.
+func (s *spectrum) analyzer() *analyzer {
+	if s == nil {
+		return nil
+	}
+	return s.an.Load()
 }
 
 func newSpectrum(rate int) *spectrum {
 	n := min(maxSpectrumChunks, max(8, rate*2/fftSize+4))
-	s := &spectrum{chunks: make([]spectrumChunk, n), accAt: -1, requested: -1,
+	s := &spectrum{rate: rate, chunks: make([]spectrumChunk, n), accAt: -1, requested: -1,
 		lastAt: -1, maxLag: max(4, int64(rate)/fftSize/10+1)}
 	for i := range s.chunks {
 		s.chunks[i].at = -1
@@ -614,6 +629,7 @@ func (s *spectrum) feed(at int64, stereo []float32) {
 	if s.accAt < 0 || at != s.accAt+int64(len(s.acc)) {
 		// The start, or a seek: begin a chunk at a chunk's boundary.
 		s.acc = s.acc[:0]
+		s.accL, s.accR = s.accL[:0], s.accR[:0]
 		skip := (fftSize - at%fftSize) % fftSize
 		if int(skip)*2 >= len(stereo) {
 			s.accAt = -1
@@ -623,12 +639,26 @@ func (s *spectrum) feed(at int64, stereo []float32) {
 		at += skip
 		s.accAt = at
 	}
+	on := analyzing.Load()
+	if on && s.an.Load() == nil {
+		s.an.Store(newAnalyzer(s.rate))
+	}
 	for i := 0; i+1 < len(stereo); i += 2 {
 		s.acc = append(s.acc, (stereo[i]+stereo[i+1])/2)
+		if on {
+			s.accL = append(s.accL, stereo[i])
+			s.accR = append(s.accR, stereo[i+1])
+		}
 		if len(s.acc) == fftSize {
-			s.keep(s.accAt / fftSize)
+			chunk := s.accAt / fftSize
+			s.keep(chunk)
+			// Begun part way into the chunk, it waits for the next.
+			if on && len(s.accL) == fftSize {
+				s.an.Load().analyze(chunk, s.accL, s.accR, &s.window)
+			}
 			s.accAt += fftSize
 			s.acc = s.acc[:0]
+			s.accL, s.accR = s.accL[:0], s.accR[:0]
 		}
 	}
 }

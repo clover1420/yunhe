@@ -153,8 +153,9 @@ func (a *app) accountDeps() accountpkg.Deps {
 		BeginWechatQR: func() (string, error) {
 			return beginWechatLoginQR()
 		},
-		Pane: a.pane,
-		Line: func() ui.Color { return a.inkOn(false).line },
+		Pane:      a.pane,
+		PaneSolid: a.paneSolid,
+		Line:      func() ui.Color { return a.inkOn(false).line },
 		QRSkeleton: func(c *ui.Context, pad float32) ui.Element {
 			return skeleton.QR(c, shimmer{Base: shade(3), Sheen: shade(1)}.In(c), pad)
 		},

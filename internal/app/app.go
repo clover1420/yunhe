@@ -12,6 +12,7 @@ import (
 	"lilt/internal/media/player"
 	"lilt/internal/media/qqmusic"
 	"lilt/internal/ui/base/appui"
+	"lilt/internal/ui/features/nowplaying"
 )
 
 type pageKind = navigation.Page
@@ -189,6 +190,8 @@ type app struct {
 	wallState             wallState     // the wall of the queue's covers, as it is dragged
 	quiet                 quietState    // the quiet parts of the song playing, for its hot comments
 	captions              captionState  // the episode playing's captions, and the model that writes them
+	an                    nowplaying.AnalysisState // the analysis pane, as the music plays
+	anScrub               scrubState               // the analysis pane's progress bar
 	sig                   playerSig
 	quitting              bool
 

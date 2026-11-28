@@ -47,7 +47,10 @@ type Deps struct {
 	BeginQR       func() (string, error)
 	BeginWechatQR func() (string, error)
 
-	Pane       func(e ui.Element, radius float32, onDark bool) ui.Element
+	Pane func(e ui.Element, radius float32, onDark bool) ui.Element
+	// PaneSolid styles the account menu, which drops up over the sidebar:
+	// the glass of Pane cannot sample the system's material there.
+	PaneSolid  func(e ui.Element, radius float32, onDark bool) ui.Element
 	Line       func() ui.Color
 	QRSkeleton func(c *ui.Context, pad float32) ui.Element
 	Sidebar    func(c *ui.Context, fallback ui.Color, opacity float32) ui.Color
@@ -308,7 +311,7 @@ func menu(c *ui.Context, d Deps, row ui.Element) {
 	open := d.AccountOpen
 	ui.PopoverBase(c.Key("account-menu"), row, open, func(panel ui.Element) {
 		panel.AttachTo(row, ui.AnchorTopStart, ui.AnchorBottomStart).Margin(0, 0, 6, 0).Padding(5).Gap(1)
-		d.Pane(panel, 14, false)
+		d.PaneSolid(panel, 14, false)
 		panel.Role(ui.RoleMenu).FocusGroup(ui.Vertical).Label("账户").TransformOrigin(0.5, 1).
 			Transition(ui.ElementTransition{Animation: &ui.Snappy, Enter: &ui.Motion{Scale: 0.96, Y: 4}, Exit: &ui.Motion{Scale: 0.98}})
 		if w := row.Bounds().W; w > 0 {

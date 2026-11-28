@@ -26,7 +26,7 @@ func (a *app) suggestDeps() suggest.Deps {
 		HistoryScroll: &a.historyScroll,
 		State:         &a.suggestions,
 		Post:          a.post,
-		Pane:          a.pane,
+		PaneSolid:     a.paneSolid,
 		Fetch: func(ctx context.Context, q string) (qqmusic.Suggestions, error) {
 			return searchSuggest(ctx, q)
 		},

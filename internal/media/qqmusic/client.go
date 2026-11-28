@@ -278,6 +278,16 @@ func Sized(pic string, n int) string {
 	}
 	return imageSizePattern.ReplaceAllString(strings.Replace(pic, "http://", "https://", 1), fmt.Sprintf("${1}R%dx%dM000", px, px))
 }
+
+// Original returns a cover as served, without the thumbnail size in its
+// name: where the app shows a cover large, no size the name allows has all
+// its detail.
+func Original(pic string) string {
+	if pic == "" {
+		return ""
+	}
+	return imageSizePattern.ReplaceAllString(strings.Replace(pic, "http://", "https://", 1), "${1}M000")
+}
 func albumCover(mid string) string {
 	if mid == "" {
 		return ""

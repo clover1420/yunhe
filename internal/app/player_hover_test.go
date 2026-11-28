@@ -30,6 +30,7 @@ func playerHoverApp() *app {
 	for _, size := range []int{96, 120, 240, 600} {
 		a.art.Add(qqmusic.Sized(tr.Album.PicURL, size), art)
 	}
+	a.art.Add(qqmusic.Original(tr.Album.PicURL), art)
 	return a
 }
 

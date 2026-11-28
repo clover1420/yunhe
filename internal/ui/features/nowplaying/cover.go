@@ -2,6 +2,7 @@ package nowplaying
 
 import (
 	"math"
+	"strconv"
 	"sync"
 	"time"
 
@@ -14,6 +15,20 @@ import (
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/shader"
 )
+
+// coverURL is the cover at the size the settings ask for: the cover itself,
+// or a thumbnail of the size given in pixels.
+func coverURL(pic, quality string) string {
+	switch quality {
+	case "", "original":
+		return qqmusic.Original(pic)
+	case "800", "500", "300":
+		if n, err := strconv.Atoi(quality); err == nil {
+			return qqmusic.Sized(pic, n)
+		}
+	}
+	return qqmusic.Original(pic)
+}
 
 // The cover of Now Playing is a thing to touch. It tilts toward the
 // pointer in depth, a glare following the pointer over it as light over a
