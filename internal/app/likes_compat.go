@@ -26,14 +26,16 @@ var copyText = func(text string) error { return mygo.Clipboard.Write(transfer.Te
 // likesDeps gathers what the hearts and the song menu need, once a frame.
 func (a *app) likesDeps() likes.Deps {
 	return likes.Deps{
-		Player:   a.pl,
-		Palette:  a.pal,
-		Profile:  func() *qqmusic.Profile { return a.profile },
-		Liked:    &a.liked,
-		Programs: &a.likedPrograms,
-		Asked:    &a.askedPrograms,
-		Post:     a.post,
-		Toast:    &a.toast,
+		Player:         a.pl,
+		Palette:        a.pal,
+		Profile:        func() *qqmusic.Profile { return a.profile },
+		Liked:          &a.liked,
+		Programs:       &a.likedPrograms,
+		Asked:          &a.askedPrograms,
+		LikeGen:        &a.likeGen,
+		ProgramLikeGen: &a.programLikeGen,
+		Post:           a.post,
+		Toast:          &a.toast,
 		LikeSong: func(id int64, like bool) error {
 			return likeSong(id, like)
 		},

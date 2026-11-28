@@ -2,6 +2,7 @@ package qqmusic
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -9,6 +10,27 @@ import (
 	"strings"
 	"testing"
 )
+
+// Canceling a playback lookup also cancels the HTTP request resolving its URL.
+func TestSongURLContextCancelsRequest(t *testing.T) {
+	previous, prior := httpClient, sessionSnapshot()
+	t.Cleanup(func() { httpClient = previous; setSession(prior) })
+	setSession(Session{})
+	track := Track{ID: 8892, MID: "cancelSong"}
+	RememberTracks([]Track{track})
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	httpClient = &http.Client{Transport: authRoundTripper(func(r *http.Request) (*http.Response, error) {
+		cancel()
+		if err := r.Context().Err(); err != context.Canceled {
+			t.Fatalf("playback HTTP request was not canceled: %v", err)
+		}
+		return nil, r.Context().Err()
+	})}
+	if _, err := SongURLContext(ctx, track.ID, "standard"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("playback lookup returned %v, want context cancellation", err)
+	}
+}
 
 func TestHiResPlaybackAndFallback(t *testing.T) {
 	for _, mode := range []string{"hires", "permission", "empty", "403", "404", "HTML", "low resolution", "320k", "128k", "connection", "old queue"} {
@@ -135,5 +157,21 @@ func TestHiResTrackMetadataSurvivesQueueAndSparseSearch(t *testing.T) {
 	tracks := searchTracks([]object{obj(json.RawMessage(`{"id":8892,"mid":"metadataSong"}`))})
 	if len(tracks) != 1 || tracks[0].SizeHiRes != 123456 {
 		t.Fatal("sparse search lost Hi-Res size")
+	}
+}
+
+// Stream domain validation normalizes host casing and rejects userinfo or non-QQ hosts.
+func TestValidStreamDomainHardening(t *testing.T) {
+	if !validStreamDomain("https://DL.STREAM.QQMUSIC.QQ.COM/song.flac") {
+		t.Fatal("rejected valid uppercase QQ stream host")
+	}
+	for _, raw := range []string{
+		"https://user:pass@dl.stream.qqmusic.qq.com/song.flac",
+		"https://qqmusic.qq.com@evil.example/song.flac",
+		"//dl.stream.qqmusic.qq.com/song.flac",
+	} {
+		if validStreamDomain(raw) {
+			t.Fatalf("accepted unsafe stream domain %q", raw)
+		}
 	}
 }

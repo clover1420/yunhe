@@ -25,6 +25,10 @@ type Deps struct {
 	Liked    *map[int64]bool
 	Programs *map[int64]bool
 	Asked    *map[int64]bool
+	// LikeGen and ProgramLikeGen count the clicks of each heart, so a reply
+	// to an old one does not undo a newer.
+	LikeGen        *map[int64]int
+	ProgramLikeGen *map[int64]int
 
 	Post  func(func())
 	Toast *string
@@ -60,11 +64,20 @@ func Toggle(d Deps, tr *qqmusic.Track) {
 	if *d.Liked == nil {
 		*d.Liked = map[int64]bool{}
 	}
+	if *d.LikeGen == nil {
+		*d.LikeGen = map[int64]int{}
+	}
+	uid := d.Profile().UserID
 	id, like := tr.ID, !(*d.Liked)[tr.ID]
+	gen := (*d.LikeGen)[id] + 1
+	(*d.LikeGen)[id] = gen
 	setLiked(d, id, like)
 	go func() {
 		err := d.LikeSong(id, like)
 		d.Post(func() {
+			if d.Profile() == nil || d.Profile().UserID != uid || (*d.LikeGen)[id] != gen {
+				return
+			}
 			if err != nil {
 				setLiked(d, id, !like)
 				*d.Toast = "操作失败，请稍后再试"
@@ -78,11 +91,20 @@ func Toggle(d Deps, tr *qqmusic.Track) {
 }
 
 func toggleProgram(d Deps, id int64) {
+	if *d.ProgramLikeGen == nil {
+		*d.ProgramLikeGen = map[int64]int{}
+	}
+	uid := d.Profile().UserID
 	like := !(*d.Programs)[id]
+	gen := (*d.ProgramLikeGen)[id] + 1
+	(*d.ProgramLikeGen)[id] = gen
 	SetProgramLiked(d, id, like)
 	go func() {
 		err := d.LikeProgram(id, like)
 		d.Post(func() {
+			if d.Profile() == nil || d.Profile().UserID != uid || (*d.ProgramLikeGen)[id] != gen {
+				return
+			}
 			if err != nil {
 				SetProgramLiked(d, id, !like)
 				*d.Toast = "操作失败，请稍后再试"
@@ -121,6 +143,9 @@ func LikeCurrent(d Deps) {
 
 func setLiked(d Deps, id int64, like bool) {
 	if like {
+		if *d.Liked == nil {
+			*d.Liked = map[int64]bool{}
+		}
 		(*d.Liked)[id] = true
 	} else {
 		delete(*d.Liked, id)

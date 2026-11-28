@@ -112,6 +112,7 @@ func (a *app) signedIn(prof *qqmusic.Profile) {
 		a.pl.ClearErr()
 	}
 	a.mine, a.saved, a.recPlaylists, a.liked = nil, nil, nil, nil
+	a.likeGen, a.programLikeGen = nil, nil
 	a.clearSongShelves()
 	a.likedPrograms, a.askedPrograms = nil, nil
 	a.likedAlbums = nil

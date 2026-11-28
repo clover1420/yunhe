@@ -51,9 +51,13 @@ func LyricsSizeButton(c *ui.Context, d Deps) {
 		reset.Children(func() { ui.Text(c, "恢复默认").FontSize(12) })
 		if reset.Clicked() {
 			d.Settings.LyricsFontSize = LyricsFontSizeDefault
-			d.LyricsSizeChanged()
+			d.LyricsSizeChanged(true)
 		}
 	})
+	if !*d.LyricsSizeOpen && *d.LyricsSizeDirty {
+		*d.LyricsSizeDirty = false
+		d.Settings.Save()
+	}
 	if panel.Dismissed() && !panel.PressedOutside() {
 		d.LyricsSizeTrigger.Focus(c)
 	}
@@ -65,7 +69,10 @@ func lyricsSizeSlider(c *ui.Context, d Deps) {
 	s := ui.SliderBase(c.Key("size"), &d.Settings.LyricsFontSize, LyricsFontSizeMin, LyricsFontSizeMax).
 		Height(28).PaddingX(knob / 2).Step(1).AutoFocus().Label("调整歌词字号").Cursor(ui.CursorPointer)
 	if s.Changed() {
-		d.LyricsSizeChanged()
+		d.LyricsSizeChanged(!s.Pressed())
+	} else if !s.Pressed() && *d.LyricsSizeDirty {
+		*d.LyricsSizeDirty = false
+		d.Settings.Save()
 	}
 	value := float32((d.Settings.LyricsFontSize - LyricsFontSizeMin) / (LyricsFontSizeMax - LyricsFontSizeMin))
 	fill := theme.Accent(true, 9)

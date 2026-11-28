@@ -63,12 +63,18 @@ func (a *app) choosePane(i int) {
 }
 
 // lyricsSizeChanged resets the lyrics' layout after the size changed: a
-// different size changes wrapping and line positions even while paused.
-func (a *app) lyricsSizeChanged() {
+// different size changes wrapping and line positions even while paused. A
+// drag saves once it ends, not every step of it.
+func (a *app) lyricsSizeChanged(save bool) {
 	a.lyricAt = -2
 	// The offset stays where it is, not taken for the listener scrolling.
 	a.lyricGlide = nowplaying.NewGlide(a.lyricScroll.Y)
-	a.settings.Save()
+	if save {
+		a.lyricsSizeDirty = false
+		a.settings.Save()
+	} else {
+		a.lyricsSizeDirty = true
+	}
 }
 
 // radioChip says which radio plays, over the title: a click on it, or on

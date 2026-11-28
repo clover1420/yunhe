@@ -1,4 +1,4 @@
-﻿package player
+package player
 
 import (
 	"slices"
@@ -141,8 +141,9 @@ func TestPlayNextAfterSongEnds(t *testing.T) {
 	for _, repeat := range []RepeatMode{RepeatOff, RepeatAll} {
 		for _, at := range []int{0, 1} {
 			p := New(func(func()) {})
+			defer p.stop()
 			p.Cue([]qqmusic.Track{{ID: 1}, {ID: 2}})
-			p.at, p.track, p.repeat = at, &p.queue[at], repeat
+			p.at, p.track, p.repeat, p.playing = at, &p.queue[at], repeat, true
 			p.PlayNext(qqmusic.Track{ID: 3})
 			p.ended()
 			if p.Current() == nil || p.Current().ID != 3 || !p.Playing() {
@@ -254,4 +255,3 @@ func TestRemoveQueueTracks(t *testing.T) {
 		}
 	})
 }
-

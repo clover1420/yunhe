@@ -180,7 +180,10 @@ func closeSoon(d Deps, gen int) {
 
 // Close stops the login under way and its polls.
 func Close(d Deps) {
-	qqmusic.CancelQR(d.Login.Key)
+	if d.Login.Key != "" {
+		qqmusic.CancelQR(d.Login.Key)
+		d.Login.Key = ""
+	}
 	d.Login.Gen++
 }
 
@@ -252,8 +255,9 @@ func Dialog(c *ui.Context, d Deps) {
 			})
 		})
 	})
-	if !l.Open {
+	if !l.Open && l.Key != "" {
 		qqmusic.CancelQR(l.Key)
+		l.Key = ""
 	}
 }
 

@@ -85,6 +85,7 @@ type app struct {
 	naming         nameDialog     // the name of a playlist asked for
 	deleting       deleteDialog   // whether to delete a playlist, asked
 	liked          map[int64]bool // the songs the listener likes
+	likeGen        map[int64]int
 	likedAlbums    *likedAlbumData
 	likedScroll    likedScrollState
 	toast          string   // a message to show once
@@ -93,6 +94,7 @@ type app struct {
 	// The episodes the listener likes, and doesn't, as far as NetEase has
 	// answered, and those asked about: see ui_like.go.
 	likedPrograms, askedPrograms map[int64]bool
+	programLikeGen               map[int64]int
 
 	daily       []qqmusic.Track
 	dailySpin   spinState // the record on the daily card
@@ -139,28 +141,29 @@ type app struct {
 	searched      route                 // the search last shown, which the sidebar goes back to
 	suggestions   suggestState          // what the search field's query may be after
 
-	nowPlaying  bool
-	npOpen      bool                       // Now Playing as it last showed: open or not
-	npMotion    appui.NowPlayingTransition // how it grows out of the player bar's cover
-	npPane      int                        // paneLyrics, paneQueue, paneStage, paneComments, paneProgram or paneCaptions
-	npPaneTop   float32                    // how far the cover beside the pane starts below its top
-	lyricScroll ui.ScrollState
-	lyricGlide  lyricGlide
-	lyricAt     int
-	lyricTrack  int64
-	lyricSize   float32   // size used for the preceding lyrics layout
-	lyricSizeAt time.Time // frame in which the lyrics changed size
-	lyricFont   string    // family used for the preceding lyrics layout
-	lyricBrowse bool      // the listener scrolled the lyrics away to read on
-	lyricResume bool      // the lyrics were hidden, and follow again once shown
+	nowPlaying    bool
+	npOpen        bool                       // Now Playing as it last showed: open or not
+	npMotion      appui.NowPlayingTransition // how it grows out of the player bar's cover
+	npPane        int                        // paneLyrics, paneQueue, paneStage, paneComments, paneProgram or paneCaptions
+	npPaneTop     float32                    // how far the cover beside the pane starts below its top
+	lyricScroll   ui.ScrollState
+	lyricGlide    lyricGlide
+	lyricAt       int
+	lyricTrack    int64
+	lyricSize     float32   // size used for the preceding lyrics layout
+	lyricSizeAt   time.Time // frame in which the lyrics changed size
+	lyricFont     string    // family used for the preceding lyrics layout
+	lyricBrowse   bool      // the listener scrolled the lyrics away to read on
+	lyricResume   bool      // the lyrics were hidden, and follow again once shown
 	lyricResumeAt time.Time
-	queueList   ui.ListState
-	queueAt     int // the row of the queue pane last scrolled to, -1 while it is hidden
-	comments    commentState
-	tabCount    rollState // the count on the comments' tab, as it rolls
+	queueList     ui.ListState
+	queueAt       int // the row of the queue pane last scrolled to, -1 while it is hidden
+	comments      commentState
+	tabCount      rollState // the count on the comments' tab, as it rolls
 
 	stageStyleOpen    bool // the stage's effect menu shows
 	lyricsSizeOpen    bool // the scrolling lyrics' size popover shows
+	lyricsSizeDirty   bool // lyric size changed while dragging and awaits release to save
 	lyricsSizeTrigger ui.Handle
 
 	queueOpen    bool // the player bar's floating queue shows
@@ -182,14 +185,14 @@ type app struct {
 	underTop, underBottom bool
 	barScrub              scrubState
 	npScrub               scrubState
-	glowColor             ui.Color      // the color of Now Playing's glow, from the cover's
-	backdropCache         backdropCache // the backdrop of Now Playing, as last painted
-	npArt                 *artwork      // the cover whose colors Now Playing shows
-	coverArt              *artwork      // the cover whose color accents the whole app
-	npCoverState          coverState    // the cover of Now Playing, as it is tilted and flicked
-	wallState             wallState     // the wall of the queue's covers, as it is dragged
-	quiet                 quietState    // the quiet parts of the song playing, for its hot comments
-	captions              captionState  // the episode playing's captions, and the model that writes them
+	glowColor             ui.Color                 // the color of Now Playing's glow, from the cover's
+	backdropCache         backdropCache            // the backdrop of Now Playing, as last painted
+	npArt                 *artwork                 // the cover whose colors Now Playing shows
+	coverArt              *artwork                 // the cover whose color accents the whole app
+	npCoverState          coverState               // the cover of Now Playing, as it is tilted and flicked
+	wallState             wallState                // the wall of the queue's covers, as it is dragged
+	quiet                 quietState               // the quiet parts of the song playing, for its hot comments
+	captions              captionState             // the episode playing's captions, and the model that writes them
 	an                    nowplaying.AnalysisState // the analysis pane, as the music plays
 	anScrub               scrubState               // the analysis pane's progress bar
 	sig                   playerSig

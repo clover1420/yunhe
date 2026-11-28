@@ -23,6 +23,7 @@ func TestHiResProbeHeader(t *testing.T) {
 		{"server ignores Range", header, 200, true},
 		{"ID3 prefix", append([]byte{'I', 'D', '3', 4, 0, 0, 0, 0, 0, 0}, header...), 206, true},
 		{"missing resource", header, 404, false},
+		{"server error falls back", header, 502, false},
 		{"HTML response", []byte("<html>not audio</html>"), 200, false},
 		{"truncated header", header[:30], 206, false},
 	} {
@@ -35,10 +36,13 @@ func TestHiResProbeHeader(t *testing.T) {
 				}
 				return &http.Response{StatusCode: tc.status, Body: io.NopCloser(bytes.NewReader(tc.body))}, nil
 			})}
-			info, _, err := inspectFLACStream("https://dl.stream.qqmusic.qq.com/RS01test.flac?vkey=private")
+			info, _, err := inspectFLACStream(t.Context(), "https://dl.stream.qqmusic.qq.com/RS01test.flac?vkey=private")
 			if !tc.ok {
 				if err == nil {
 					t.Fatal("accepted unavailable or invalid audio")
+				}
+				if tc.status == 502 && !errors.Is(err, ErrUnavailable) {
+					t.Fatalf("HTTP 502 returned %v, want ErrUnavailable for quality fallback", err)
 				}
 				return
 			}

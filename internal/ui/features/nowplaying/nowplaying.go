@@ -73,8 +73,9 @@ type Deps struct {
 
 	StageStyleOpen    *bool
 	LyricsSizeOpen    *bool
+	LyricsSizeDirty   *bool
 	LyricsSizeTrigger *ui.Handle
-	LyricsSizeChanged func()
+	LyricsSizeChanged func(save bool)
 
 	TopBar func(*ui.Context) float32
 
@@ -92,14 +93,14 @@ type Deps struct {
 
 	PaneTabs func(*ui.Context)
 
-	RadioChip   func(*ui.Context, string)
-	ArtistLinks func(*ui.Context, *qqmusic.Track, ui.Color, ui.Color, ...bool) ui.Element
-	Like        func(*ui.Context, *qqmusic.Track, float32, ui.Color, ...appui.ButtonSurface) ui.Element
-	SongMenu    func(*ui.Context, *qqmusic.Track, float32, ui.Color, ...appui.ButtonSurface) ui.Element
-	Cover       func(*ui.Context, string, int, float32, float32) ui.Element
-	SongItems   func(*qqmusic.Track, int64) func(*ui.Menu)
+	RadioChip      func(*ui.Context, string)
+	ArtistLinks    func(*ui.Context, *qqmusic.Track, ui.Color, ui.Color, ...bool) ui.Element
+	Like           func(*ui.Context, *qqmusic.Track, float32, ui.Color, ...appui.ButtonSurface) ui.Element
+	SongMenu       func(*ui.Context, *qqmusic.Track, float32, ui.Color, ...appui.ButtonSurface) ui.Element
+	Cover          func(*ui.Context, string, int, float32, float32) ui.Element
+	SongItems      func(*qqmusic.Track, int64) func(*ui.Menu)
 	QueueSongItems func(*qqmusic.Track, int) func(*ui.Menu)
-	Avatar      func(*ui.Context, string, float32, ui.Color)
+	Avatar         func(*ui.Context, string, float32, ui.Color)
 
 	Quiet         *QuietState
 	QuietShown    func(*ui.Context, ui.Element, *qqmusic.Track, []lyrics.Line, bool) (float32, bool)

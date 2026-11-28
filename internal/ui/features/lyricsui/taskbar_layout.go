@@ -72,7 +72,11 @@ func TaskbarFreeSpaceRight(length, requested, minimum, gap int, occupied []Inter
 // and closing apps does not bounce the lyrics across the taskbar.
 func TaskbarPlacementSpace(length, requested, minimum, gap int, occupied []Interval, leftTaskbar bool) (int, int) {
 	if leftTaskbar {
-		return TaskbarFreeSpaceRight(length, requested, minimum, gap, occupied)
+		x, width := TaskbarFreeSpaceRight(length, requested, minimum, gap, occupied)
+		if width == 0 || x+width <= length/2 {
+			return 0, 0
+		}
+		return x, width
 	}
 	x, width := TaskbarFreeSpace(length, requested, minimum, gap, occupied)
 	if width == 0 || x >= length/2 {

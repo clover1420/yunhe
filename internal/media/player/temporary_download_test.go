@@ -1,4 +1,4 @@
-﻿package player
+package player
 
 import (
 	"bytes"
@@ -53,7 +53,7 @@ func TestUncachedStreamUsesTemporaryFile(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				downloadBody(t, func(*http.Request) io.ReadCloser { return io.NopCloser(bytes.NewReader(data)) })
-				dl := tc.cache.download(1, &qqmusic.Stream{URL: "https://audio.test/song", Size: int64(len(data)), Type: "flac", Level: "lossless"})
+				dl := tc.cache.download(t.Context(), 1, &qqmusic.Stream{URL: "https://audio.test/song", Size: int64(len(data)), Type: "flac", Level: "lossless"})
 				defer dl.Close()
 				synctest.Wait()
 				if dl.file == nil || dl.part == "" || cap(dl.data) != 0 {
@@ -118,7 +118,7 @@ func TestTemporaryDownloadCancellation(t *testing.T) {
 			return io.NopCloser(io.MultiReader(bytes.NewReader(data), canceledDownloadReader{r.Context()}))
 		})
 		var cache *Cache
-		dl := cache.download(1, &qqmusic.Stream{URL: "https://audio.test/song", Size: 1024})
+		dl := cache.download(t.Context(), 1, &qqmusic.Stream{URL: "https://audio.test/song", Size: 1024})
 		defer dl.Close()
 		synctest.Wait()
 		if dl.file == nil || !dl.share() {
@@ -183,7 +183,7 @@ func TestTemporaryDownloadFallsBackToMemory(t *testing.T) {
 		data := []byte("audio without temporary storage")
 		downloadBody(t, func(*http.Request) io.ReadCloser { return io.NopCloser(bytes.NewReader(data)) })
 		var cache *Cache
-		dl := cache.download(1, &qqmusic.Stream{URL: "https://audio.test/song", Size: int64(len(data))})
+		dl := cache.download(t.Context(), 1, &qqmusic.Stream{URL: "https://audio.test/song", Size: int64(len(data))})
 		defer dl.Close()
 		synctest.Wait()
 		if dl.file != nil || !bytes.Equal(dl.data, data) || dl.err != nil {

@@ -78,6 +78,7 @@ func (a *app) nowplayingDeps() nowplaying.Deps {
 		LyricResumeAt:     &a.lyricResumeAt,
 		StageStyleOpen:    &a.stageStyleOpen,
 		LyricsSizeOpen:    &a.lyricsSizeOpen,
+		LyricsSizeDirty:   &a.lyricsSizeDirty,
 		LyricsSizeTrigger: &a.lyricsSizeTrigger,
 		LyricsSizeChanged: a.lyricsSizeChanged,
 		TopBar:            topBar,

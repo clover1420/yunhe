@@ -39,3 +39,13 @@ func TestTaskbarLyricScrollBounds(t *testing.T) {
 		}
 	}
 }
+
+// A left-aligned taskbar must hide the lyrics rather than let them cross its middle.
+func TestTaskbarLyricsPlacementSpaceAcrossCenter(t *testing.T) {
+	if x, width := TaskbarPlacementSpace(1000, 280, 100, 8, []Interval{{0, 120}, {480, 1000}}, true); width != 0 || x != 0 {
+		t.Fatalf("left taskbar let lyrics cross its middle: %d+%d", x, width)
+	}
+	if x, width := TaskbarPlacementSpace(1000, 280, 100, 8, []Interval{{0, 480}}, true); width != 280 || x+width <= 500 {
+		t.Fatalf("left taskbar missed real right-side space: %d+%d", x, width)
+	}
+}
